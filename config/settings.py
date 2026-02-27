@@ -7,8 +7,8 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 NOTION_API_KEY = os.environ["NOTION_API_KEY"]
 
 # Notion database IDs (collection IDs)
-NOTION_EVENTS_DB_ID = "21452f2f-6f38-4a70-8f3b-dabbb7ee81f1"
-NOTION_SOURCES_DB_ID = "c0e5c418-893f-4138-bc0d-7d046b02323d"
+NOTION_EVENTS_DB_ID = "70e9768bfcec49a9aa8565d5aa1f1881"
+NOTION_SOURCES_DB_ID = "0c3415c21d944845841665bdcd1c529e"
 
 # Claude model settings
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
