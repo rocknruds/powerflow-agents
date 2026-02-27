@@ -130,12 +130,63 @@ def main() -> None:
         sys.exit(1)
     console.print(f"[green]✓[/green] Event created: {event_page_url}")
 
-    # ── 7. Final summary ──────────────────────────────────────────────────────
+    # ── 7. Write Intel Feed to Notion ─────────────────────────────────────────
+    console.print("\n[bold cyan]Writing Intel Feed record...[/bold cyan]")
+    screen_result_stub = {"score": 50, "reasoning": "Manually ingested via CLI."}
+    try:
+        intel_page_id, intel_page_url = notion_writer.write_intel_feed(
+            source_data, event_data, screen_result_stub
+        )
+    except RuntimeError as exc:
+        console.print(f"\n[bold red]Notion write failed (Intel Feed):[/bold red] {exc}")
+        sys.exit(1)
+    console.print(f"[green]✓[/green] Intel Feed created: {intel_page_url}")
+
+    # ── 8. Write Actors to Notion ─────────────────────────────────────────────
+    console.print("\n[bold cyan]Writing Actor records...[/bold cyan]")
+    try:
+        actor_results = notion_writer.write_actors(data.get("actors", []), event_page_id)
+    except RuntimeError as exc:
+        console.print(f"\n[bold red]Notion write failed (Actors):[/bold red] {exc}")
+        sys.exit(1)
+    for _pid, actor_url, actor_name, is_new in actor_results:
+        label = "new" if is_new else "existing"
+        console.print(f"[green]✓[/green] {actor_name} ({label}): {actor_url}")
+
+    # ── 9. Write Activity Log ─────────────────────────────────────────────────
+    console.print("\n[bold cyan]Writing Activity Log entry...[/bold cyan]")
+    source_title = source_data.get("title", "Untitled")
+    actor_names = ", ".join(name for _, _, name, _ in actor_results)
+    log_summary = (
+        f"Ingested source, event, intel feed, and {len(actor_results)} actor(s) "
+        f"from {source_title}"
+    )
+    raw_reliability = source_data.get("reliability", "")
+    log_confidence = "High" if raw_reliability == "High" else "Medium"
+    try:
+        notion_writer.write_activity_log(
+            log_title=source_title,
+            summary=log_summary,
+            action_type="Create",
+            target_database="Events Timeline",
+            target_record=event_data.get("event_name", ""),
+            source_material=url or "",
+            confidence=log_confidence,
+            notes=actor_names,
+        )
+    except RuntimeError as exc:
+        console.print(f"\n[bold red]Notion write failed (Activity Log):[/bold red] {exc}")
+        sys.exit(1)
+    console.print("[green]✓[/green] Activity log entry created.")
+
+    # ── 10. Final summary ─────────────────────────────────────────────────────
     console.print(
         Panel(
             f"[bold green]✓ Ingestion complete[/bold green]\n\n"
-            f"[bold]Source:[/bold] {source_page_url}\n"
-            f"[bold]Event:[/bold]  {event_page_url}",
+            f"[bold]Source:[/bold]     {source_page_url}\n"
+            f"[bold]Event:[/bold]      {event_page_url}\n"
+            f"[bold]Intel Feed:[/bold] {intel_page_url}\n"
+            f"[bold]Actors:[/bold]     {len(actor_results)} written",
             title="PowerFlow",
             border_style="green",
         )

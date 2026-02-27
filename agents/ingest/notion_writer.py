@@ -1,5 +1,6 @@
 """Notion API writes for Sources, Events, Intelligence Feeds, and Actors Registry databases."""
 
+import datetime
 from typing import Any
 
 from notion_client import Client
@@ -8,6 +9,7 @@ from rich.console import Console
 
 from config.settings import (
     ACTOR_TYPE_NOTION_MAP,
+    NOTION_ACTIVITY_LOG_DB_ID,
     NOTION_ACTORS_DB_ID,
     NOTION_API_KEY,
     NOTION_EVENTS_DB_ID,
@@ -199,28 +201,79 @@ def write_actors(
     return results
 
 
-def _find_actor_by_name(client: Client, name: str) -> tuple[str, str] | None:
-    """Search for an actor by name in the Actors Registry. Returns (page_id, page_url) or None."""
+def write_activity_log(
+    log_title: str,
+    summary: str,
+    action_type: str,
+    target_database: str,
+    target_record: str = "",
+    source_material: str = "",
+    confidence: str = "High",
+    notes: str = "",
+    requires_human_review: bool = False,
+) -> tuple[str, str]:
+    """Create an entry in the Agent Activity Log database.
+
+    Returns (page_id, page_url).
+    Raises RuntimeError on API failure.
+    """
+    client = _get_client()
+
+    properties: dict[str, Any] = {
+        "Log Title": _title(log_title),
+        "Agent ID": _select("Agent-A: Ingestion"),
+        "Action Type": _select(action_type),
+        "Target Database": _select(target_database),
+        "Status": _select("Completed"),
+        "Confidence": _select(confidence),
+        "Summary": _rich_text(summary),
+        "Target Record": _rich_text(target_record),
+        "Source Material": _rich_text(source_material),
+        "Notes": _rich_text(notes),
+        "Requires Human Review": {"checkbox": requires_human_review},
+        "Visibility": _select("Internal"),
+        "Timestamp": {"date": {"start": datetime.date.today().isoformat()}},
+    }
+
     try:
-        response = client.search(
-            query=name,
-            filter={"value": "page", "property": "object"},
+        response = client.pages.create(
+            parent={"database_id": NOTION_ACTIVITY_LOG_DB_ID},
+            properties=properties,
         )
     except APIResponseError as exc:
         raise RuntimeError(
-            f"Notion API error searching for actor '{name}': {exc.status} — {exc.body}"
+            f"Notion API error writing Activity Log record: {exc.status} — {exc.body}"
         ) from exc
 
-    existing = None
-    for page in response.get("results", []):
-        if page.get("parent", {}).get("database_id", "").replace("-", "") == NOTION_ACTORS_DB_ID.replace("-", ""):
-            existing = page
-            break
+    page_id = response["id"]
+    page_url = response.get("url", f"https://notion.so/{page_id.replace('-', '')}")
+    return page_id, page_url
 
-    if existing is None:
+
+def _find_actor_by_name(client: Client, name: str) -> tuple[str, str] | None:
+    """Search for an actor by name in the Actors Registry. Returns (page_id, page_url) or None."""
+    try:
+        response = client.databases.query(
+            database_id=NOTION_ACTORS_DB_ID,
+            filter={
+                "property": "Name",
+                "title": {
+                    "equals": name
+                }
+            }
+        )
+    except APIResponseError as exc:
+        raise RuntimeError(
+            f"Notion API error querying Actors Registry for '{name}': {exc.status} — {exc.body}"
+        ) from exc
+
+    results = response.get("results", [])
+    if not results:
         return None
-    page_id = existing["id"]
-    page_url = existing.get("url", f"https://notion.so/{page_id.replace('-', '')}")
+
+    page = results[0]
+    page_id = page["id"]
+    page_url = page.get("url", f"https://notion.so/{page_id.replace('-', '')}")
     return page_id, page_url
 
 

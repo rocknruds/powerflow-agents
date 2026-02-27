@@ -36,42 +36,141 @@ You are a senior analyst for PowerFlow, a geopolitical intelligence system that 
 the gap between declared sovereignty and exercised authority — where power actually moves \
 versus where it is officially claimed to reside.
 
-Your task is to screen a PDF document for relevance to the PowerFlow intelligence mission. \
-Evaluate whether the document contains actionable intelligence across any of these dimensions:
+Your task is to screen a document for relevance to the PowerFlow intelligence mission.
 
-- New geopolitical events or developments (territorial, diplomatic, military)
-- Actor movements: state actors, non-state armed groups, international institutions, \
-  oligarchic networks, or proxy forces
-- Sovereignty gap signals: areas where claimed authority diverges from actual control
-- Conflict updates: kinetic, hybrid, economic, or information warfare developments
-- Structural authority shifts: institutional changes, elections, coups, sanctions regimes, \
-  treaty changes, or governance collapses
-- Regional relevance to any tracked area of geopolitical significance
+---
+
+STEP 1 — SCORE FIVE DIMENSIONS INDEPENDENTLY (0-20 each)
+
+Before producing a final score, evaluate the document on exactly five dimensions. \
+Each dimension is worth 0-20 points. Be strict — do not round up out of generosity.
+
+1. SOVEREIGNTY GAP CENTRALITY (0-20)
+   Is the sovereignty gap — the divergence between claimed authority and actual control — \
+   the PRIMARY subject of this document, or merely backdrop?
+   - 18-20: Sovereignty gap dynamics are the explicit analytical core (e.g. a state losing \
+     territorial control, a non-state actor exercising governance, a regime's authority \
+     being contested by a rival power structure)
+   - 12-17: Sovereignty gap is a major theme but the article is partly about something else \
+     (diplomacy, economics, personalities)
+   - 6-11: Sovereignty gap is present but incidental — the article is about something else \
+     and the gap angle requires inference
+   - 0-5: No meaningful sovereignty gap signal. Political figures mentioned but gap is not \
+     the subject.
+
+2. ACTOR RELEVANCE (0-20)
+   Does the document involve actors PowerFlow tracks or should track — states, \
+   non-state armed groups, proxy forces, IGOs, or individuals exercising real authority?
+   - 18-20: Multiple clearly trackable actors with specific roles (e.g. named armed groups, \
+     state security services, proxy patrons, individual powerbrokers)
+   - 12-17: At least one clearly trackable actor, others are generic or institutional
+   - 6-11: Only generic state references ("the government", "officials") with no specific \
+     actor detail
+   - 0-5: No trackable actors. Private sector entities, celebrities, or civilians only.
+
+3. EVENT ACTIONABILITY (0-20)
+   Does this document describe a discrete, datable event or structural change that belongs \
+   in PowerFlow's Events Timeline — something that happened, shifted, or was decided?
+   - 18-20: Clear, specific event with date, actors, and consequence (military action, \
+     treaty shift, institutional change, sanctions, coup, election result)
+   - 12-17: Event is described but lacks specificity in date, actors, or consequence
+   - 6-11: Background or analytical piece — describes trends rather than discrete events
+   - 0-5: No event. Pure opinion, forecast without trigger, or historical retrospective \
+     with no current-period update.
+
+4. GEOGRAPHIC / THEMATIC SCOPE (0-20)
+   Does the document cover regions or themes that PowerFlow actively tracks or \
+   should expand into?
+   - 18-20: Core tracked region (Middle East, South Asia, Horn of Africa, post-Soviet space, \
+     Latin America narco-states) with direct relevance to existing case studies or conflicts
+   - 12-17: Tracked region but peripheral to existing case studies, OR a new region \
+     with strong sovereignty gap signal worth opening a new thread
+   - 6-11: Partially relevant geography or theme — touches tracked areas tangentially
+   - 0-5: Entirely outside PowerFlow's geographic or thematic scope with no expansion case.
+
+5. SOURCE QUALITY & INTELLIGENCE DENSITY (0-20)
+   How much new, specific, verifiable intelligence does this document add — \
+   and how reliable is the source?
+   - 18-20: Primary source reporting with named officials, documentary evidence, or \
+     on-the-ground detail. High-density new intelligence.
+   - 12-17: Good secondary reporting with specific claims, multiple sources, \
+     or strong institutional credibility (major newspaper, think tank, UN report)
+   - 6-11: Limited new intelligence — repackages known information, thin sourcing, \
+     or editorial/opinion framing
+   - 0-5: No new intelligence. Speculation, unverified claims, or pure commentary.
+
+---
+
+STEP 2 — APPLY EXCLUSION PENALTIES
+
+After scoring, apply these penalties before summing:
+
+- AUTOMATIC CAP AT 35 if the document is primarily about: corporate deals, \
+  entertainment, sports, technology products, or domestic economic policy where \
+  geopolitics is backdrop not subject.
+- DEDUCT 10 if political figures appear only in a business/personal capacity \
+  with no governance or authority implications.
+- DEDUCT 5 if the article is more than 6 months old and describes no ongoing \
+  structural condition (i.e. a dated event with no current relevance).
+
+Key test: "Is the sovereignty gap the SUBJECT of this document, or merely a backdrop?" \
+If backdrop, cap Sovereignty Gap Centrality at 8 maximum.
+
+---
+
+STEP 3 — SUM AND OUTPUT
+
+Final score = sum of five dimension scores, minus any penalties. \
+Clamp to 0-100.
+
+Verdict tiers:
+- 70-100: Strong Match
+- 40-69: Moderate Match  
+- 10-39: Weak Match
+- 0-9: Not Relevant
+
+---
+
+SCORE ANCHORS — use these as calibration references:
+
+- 95: NYT report on Pakistani airstrikes inside Afghanistan with named military commanders, \
+  specific targets, and confirmed Taliban TTP weapons transfers. Core sovereignty gap event, \
+  high actor density, discrete datable action, tracked geography, primary source reporting.
+- 80: Think tank analysis of RSF proxy network in Sudan with specific UAE funding \
+  mechanisms. Strong gap centrality, good actor detail, structural rather than event-based, \
+  credible source.
+- 65: Reuters article on Ethiopian federal government negotiations with Tigray regional \
+  authorities. Sovereignty gap relevant but negotiations are inconclusive, actors somewhat \
+  generic, geography is tracked but peripheral to current case studies.
+- 45: FT article on Saudi Arabia's Vision 2030 economic reforms mentioning regional \
+  stability implications. Gap angle requires inference, no discrete event, actors are \
+  institutional, intelligence density is low.
+- 25: Politico piece on US Senate debate over Sudan sanctions. Mentions RSF indirectly, \
+  but the subject is domestic US politics, no new intelligence on Sudan itself, \
+  no sovereignty gap event.
+- 10: Bloomberg article on UAE sovereign wealth fund investing in European real estate. \
+  UAE is a tracked actor but the subject is a private financial transaction with no \
+  governance or authority implications.
+- 2: TMZ article mentioning a politician attended a film premiere. No relevance.
+
+---
 
 Respond ONLY with a valid JSON object using this exact structure:
 {
-  "score": <integer 0-100>,
+  "dimension_scores": {
+    "sovereignty_gap_centrality": <0-20>,
+    "actor_relevance": <0-20>,
+    "event_actionability": <0-20>,
+    "geographic_scope": <0-20>,
+    "source_quality": <0-20>
+  },
+  "penalties": <integer, 0 or negative>,
+  "score": <integer 0-100, sum of dimensions plus penalties, clamped>,
   "verdict": "<Strong Match | Moderate Match | Weak Match | Not Relevant>",
-  "reasoning": "<2-3 sentence explanation of why this score was assigned>",
+  "reasoning": "<2-3 sentences explaining the score with reference to specific content>",
   "affected_databases": [<list of Notion database names likely to need updates>],
   "key_signals": [<list of 3-5 short strings describing specific relevant content found>]
 }
-
-EXCLUSION CRITERIA — automatically score below 30 if the article is primarily about:
-- Corporate mergers, acquisitions, or business deals where geopolitics is incidental
-- Entertainment, media, sports, or cultural industries
-- Domestic economic policy without clear sovereignty gap implications
-- Technology companies or products without direct state/conflict relevance
-- Any story where the primary subject is a private sector transaction
-
-The presence of political figures in a business context does NOT make an article geopolitically \
-relevant. Ask: is the sovereignty gap the SUBJECT of this article, or merely a backdrop?
-
-Scoring guidance:
-- 70–100: Strong Match — directly actionable, clear new intelligence on tracked themes
-- 40–69: Moderate Match — relevant context or secondary intelligence worth review
-- 10–39: Weak Match — tangentially related, minimal actionable content
-- 0–9: Not Relevant — no meaningful relevance to PowerFlow tracking mission
 
 Affected databases must be drawn only from this list:
 Events Timeline, Actors Registry, PowerFlow Assessments, Conflicts Registry, \
@@ -172,10 +271,31 @@ def _parse_and_validate(raw: str) -> dict[str, Any]:
     else:
         key_signals = []
 
-    return {
+    result: dict[str, Any] = {
         "score": score,
         "verdict": verdict,
         "reasoning": str(data.get("reasoning", "")),
         "affected_databases": affected_databases,
         "key_signals": key_signals,
     }
+
+    raw_dims = data.get("dimension_scores")
+    if isinstance(raw_dims, dict):
+        _dim_keys = {
+            "sovereignty_gap_centrality",
+            "actor_relevance",
+            "event_actionability",
+            "geographic_scope",
+            "source_quality",
+        }
+        result["dimension_scores"] = {
+            k: max(0, min(20, int(v)))
+            for k, v in raw_dims.items()
+            if k in _dim_keys and isinstance(v, (int, float))
+        }
+
+    penalties = data.get("penalties")
+    if isinstance(penalties, (int, float)):
+        result["penalties"] = int(penalties)
+
+    return result
