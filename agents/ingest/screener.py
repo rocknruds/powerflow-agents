@@ -120,7 +120,13 @@ def screen(pdf_path: str | Path) -> dict[str, Any]:
         message = client.messages.create(
             model=_SCREENER_MODEL,
             max_tokens=_MAX_TOKENS,
-            system=_SYSTEM_PROMPT,
+            system=[
+                {
+                    "type": "text",
+                    "text": _SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             messages=[{"role": "user", "content": f"Screen the following document:\n\n{text}"}],
         )
     except anthropic.APIError as exc:

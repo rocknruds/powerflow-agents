@@ -109,11 +109,17 @@ def extract(text: str) -> dict[str, Any]:
 
 
 def _call_claude(client: anthropic.Anthropic, text: str, strict: bool) -> str:
-    system = _SYSTEM_PROMPT + (_STRICT_SUFFIX if strict else "")
+    system_text = _SYSTEM_PROMPT + (_STRICT_SUFFIX if strict else "")
     message = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=CLAUDE_MAX_TOKENS,
-        system=system,
+        system=[
+            {
+                "type": "text",
+                "text": system_text,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
         messages=[{"role": "user", "content": text}],
     )
     return message.content[0].text.strip()
