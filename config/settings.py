@@ -7,12 +7,14 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 NOTION_API_KEY = os.environ["NOTION_API_KEY"]
 
 # Notion database IDs (collection IDs)
-NOTION_EVENTS_DB_ID = "70e9768bfcec49a9aa8565d5aa1f1881"
-NOTION_SOURCES_DB_ID = "0c3415c21d944845841665bdcd1c529e"
+NOTION_EVENTS_DB_ID = os.environ["NOTION_EVENTS_DB_ID"]
+NOTION_SOURCES_DB_ID = os.environ["NOTION_SOURCES_DB_ID"]
+NOTION_INTEL_FEEDS_DB_ID = os.environ["NOTION_INTEL_FEEDS_DB_ID"]
+NOTION_ACTORS_DB_ID = os.environ.get("NOTION_ACTORS_DB_ID", "7aa6bbc818ad4a35a4059fbe2537d115")
 
 # Claude model settings
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-CLAUDE_MAX_TOKENS = 1024
+CLAUDE_MAX_TOKENS = 2048
 
 # Valid enum values for validation
 VALID_SOURCE_TYPES = {
@@ -42,4 +44,17 @@ VALID_SOVEREIGNTY_IMPACTS = {
     "Narrows",
     "No clear effect",
     "Indirect",
+}
+
+VALID_ACTOR_TYPES = {
+    "State",
+    "Non-State",
+    "Hybrid",
+    "IGO",
+    "Individual",
+}
+
+# Maps LLM-returned actor types to exact Notion select option names
+ACTOR_TYPE_NOTION_MAP: dict[str, str] = {
+    "IGO": "International Organization",
 }
