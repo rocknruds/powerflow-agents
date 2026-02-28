@@ -259,12 +259,18 @@ if run_clicked:
                     data.get("actors", []), event_page_id
                 )
 
+                # Score actors after ingestion
+                from agents.score.score_agent import score_actors
+                actor_ids = [pid for pid, _, _, _ in actor_results]
+                score_results = score_actors(actor_ids) if actor_ids else []
+
                 st.session_state["ingestion_status"] = {
                     "success": True,
                     "source_url": source_page_url,
                     "event_url": event_page_url,
                     "intel_url": intel_page_url,
                     "actors": actor_results,
+                    "score_results": score_results,
                 }
             except Exception as exc:
                 st.session_state["ingestion_status"] = {
@@ -288,5 +294,18 @@ if status := st.session_state.get("ingestion_status"):
                 st.markdown(f"- [{actor_name}]({page_url}) `({label})`")
         else:
             st.markdown("**Actors:** none extracted")
+
+        score_results: list[dict] = status.get("score_results", [])
+        if score_results:
+            st.markdown("**PF Scores:**")
+            for r in score_results:
+                if r["success"]:
+                    pf = r["pf_score"]
+                    st.markdown(
+                        f"- **{r['actor_name']}** — "
+                        f"Authority: `{r['authority_score']}` | "
+                        f"Reach: `{r['reach_score']}` | "
+                        f"**PF Score: `{pf:.0f}`**"
+                    )
     else:
         st.error(f"Ingestion failed: {status['error']}")

@@ -1,6 +1,7 @@
 """Notion API writes for Sources, Events, Intelligence Feeds, and Actors Registry databases."""
 
 import datetime
+import requests
 from typing import Any
 
 from notion_client import Client
@@ -69,8 +70,10 @@ def write_event(event: dict[str, Any], source_page_id: str) -> tuple[str, str]:
         "Event Name": _title(event.get("event_name", "Untitled Event")),
         "Event Type": _select(event.get("event_type", "Other")),
         "Description": _rich_text(event.get("description", "")),
-        "Impact on Sovereignty Gap": _select(
-            event.get("impact_on_sovereignty_gap", "Indirect")
+        # NOTE: Notion property must be renamed from "Impact on Sovereignty Gap" to "PF Signal"
+        # in the Events Timeline database settings before this will write correctly.
+        "PF Signal": _select(
+            event.get("pf_signal", "Indirect")
         ),
         "Key Sources": {
             "relation": [{"id": source_page_id}]
@@ -95,7 +98,7 @@ def write_event(event: dict[str, Any], source_page_id: str) -> tuple[str, str]:
     return page_id, page_url
 
 
-_GAP_IMPLICATION_MAP: dict[str, str] = {
+_PF_SIGNAL_MAP: dict[str, str] = {
     "Widens": "Widening",
     "Narrows": "Narrowing",
     "No clear effect": "Stable",
@@ -122,8 +125,8 @@ def write_intel_feed(
     raw_source_type = source.get("source_type", "Other")
     source_type = _SOURCE_TYPE_MAP.get(raw_source_type, raw_source_type)
 
-    raw_gap = event.get("impact_on_sovereignty_gap", "Indirect")
-    gap_implication = _GAP_IMPLICATION_MAP.get(raw_gap, "Unclear")
+    raw_gap = event.get("pf_signal", "Indirect")
+    gap_implication = _PF_SIGNAL_MAP.get(raw_gap, "Unclear")
 
     score: int = screen_result.get("score", 0)
     if score >= 80:
@@ -140,7 +143,7 @@ def write_intel_feed(
         "Source Type": _select(source_type),
         "Reliability": _select(source.get("reliability", "Medium")),
         "Author": _rich_text(source.get("author_organization", "")),
-        "Gap Implication": _select(gap_implication),
+        "PF Signal": _select(gap_implication),
         "So What Summary": _rich_text(screen_result.get("reasoning", "")),
         "Confidence Shift": _select(confidence_shift),
         "Ingestion Status": _select("Integrated"),
@@ -252,22 +255,31 @@ def write_activity_log(
 
 def _find_actor_by_name(client: Client, name: str) -> tuple[str, str] | None:
     """Search for an actor by name in the Actors Registry. Returns (page_id, page_url) or None."""
-    try:
-        response = client.databases.query(
-            database_id=NOTION_ACTORS_DB_ID,
-            filter={
-                "property": "Name",
-                "title": {
-                    "equals": name
-                }
+    url = f"https://api.notion.com/v1/databases/{NOTION_ACTORS_DB_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    payload = {
+        "filter": {
+            "property": "Name",
+            "title": {
+                "equals": name
             }
-        )
-    except APIResponseError as exc:
+        }
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as exc:
         raise RuntimeError(
-            f"Notion API error querying Actors Registry for '{name}': {exc.status} — {exc.body}"
+            f"Notion API error querying Actors Registry for '{name}': {exc}"
         ) from exc
 
-    results = response.get("results", [])
+    data = response.json()
+    results = data.get("results", [])
     if not results:
         return None
 
@@ -293,15 +305,30 @@ def _create_actor(client: Client, actor: dict[str, Any]) -> tuple[str, str]:
     if iso3:
         properties["ISO3 / Identifier"] = _rich_text(iso3)
 
+    pf_score_properties = {
+        "Authority Score": {"number": None},  # 0-100, populated by PF Score Agent
+        "Reach Score": {"number": None},       # 0-100, populated by PF Score Agent
+    }
+
     try:
         response = client.pages.create(
             parent={"database_id": NOTION_ACTORS_DB_ID},
-            properties=properties,
+            properties={**properties, **pf_score_properties},
         )
-    except APIResponseError as exc:
-        raise RuntimeError(
-            f"Notion API error creating Actor '{name}': {exc.status} — {exc.body}"
-        ) from exc
+    except APIResponseError:
+        console.print(
+            f"[yellow]Warning:[/yellow] Could not write Authority Score / Reach Score for "
+            f"'{name}' — schema fields may not exist yet. Retrying without PF Score fields."
+        )
+        try:
+            response = client.pages.create(
+                parent={"database_id": NOTION_ACTORS_DB_ID},
+                properties=properties,
+            )
+        except APIResponseError as exc:
+            raise RuntimeError(
+                f"Notion API error creating Actor '{name}': {exc.status} — {exc.body}"
+            ) from exc
 
     page_id = response["id"]
     page_url = response.get("url", f"https://notion.so/{page_id.replace('-', '')}")

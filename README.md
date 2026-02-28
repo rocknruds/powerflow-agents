@@ -1,8 +1,22 @@
 # PowerFlow Agents
 
-PowerFlow is a geopolitical intelligence system that maps the gap between claimed authority and exercised control — tracking where power actually moves versus where it is officially declared to reside.
+PowerFlow is a geopolitical intelligence system that measures and tracks the **PowerFlow Score (PF Score)** — a composite measure of real-world control and influence — for every actor in the system, regardless of their nominal or claimed authority.
 
 This repo contains the **agents layer**: autonomous Python scripts that ingest, extract, and write structured intelligence data into the PowerFlow Notion workspace.
+
+---
+
+## PowerFlow Score Framework
+
+Every actor in PowerFlow has a **PF Score** (0–100) — a composite measure of real-world power, not nominal or declared authority.
+
+| Component | What It Measures |
+|---|---|
+| **Authority Score** | Real internal control within claimed territory or domain |
+| **Reach Score** | External influence — ability to shape outcomes beyond own borders |
+| **PF Score** | Weighted composite (60% Authority, 40% Reach) |
+
+Intelligence ingested through this agent feeds the analytical pipeline that keeps these scores updated.
 
 ---
 
@@ -118,7 +132,7 @@ The agent will:
 | Date | ISO date of the event |
 | Event Type | Legal change, Military or coercive action, Sanctions, Institutional reform, etc. |
 | Description | 3–5 sentence analytical description focused on power implications |
-| Impact on Sovereignty Gap | Widens, Narrows, No clear effect, or Indirect |
+| PF Signal | Widens, Narrows, No clear effect, or Indirect — whether this event strengthens or weakens an actor's PF Score |
 | Key Sources | Linked to the Source record created in the same run |
 
 ---

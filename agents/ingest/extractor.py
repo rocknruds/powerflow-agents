@@ -13,8 +13,8 @@ from config.settings import (
     CLAUDE_MODEL,
     VALID_ACTOR_TYPES,
     VALID_EVENT_TYPES,
+    VALID_PF_SIGNAL_IMPACTS,
     VALID_RELIABILITY,
-    VALID_SOVEREIGNTY_IMPACTS,
     VALID_SOURCE_TYPES,
 )
 
@@ -22,8 +22,11 @@ console = Console()
 
 _SYSTEM_PROMPT = """\
 You are a geopolitical intelligence analyst working within the PowerFlow system. \
-PowerFlow analyzes the gap between declared sovereignty and exercised authority — \
-where power actually moves versus where it is officially claimed to reside.
+PowerFlow is a geopolitical intelligence system that scores how power actually moves \
+through the world. Every actor — state, armed group, or institution — has a PowerFlow \
+Score (PF Score) reflecting their real-world control and influence, not their nominal \
+or claimed authority. Your job is to extract structured intelligence that helps update \
+those scores.
 
 Your task is to extract structured intelligence from the provided article or text. \
 Return ONLY a valid JSON object with no additional text, commentary, or markdown.
@@ -33,8 +36,10 @@ Extraction rules:
 - Event names should be concise and descriptive \
 (e.g. "Russia Suspends New START Treaty Participation" not "Russia and US nuclear treaty")
 - Descriptions should focus on structural power implications, not just what happened
-- Impact on Sovereignty Gap must reflect whether this event expands or contracts the gap \
-between a state's claimed authority and its actual control
+- PF Signal must reflect whether this event strengthens or weakens an actor's real-world \
+control and influence (their PF Score). "Widens" = actor loses effective control or \
+influence. "Narrows" = actor consolidates control or gains influence. Use "Indirect" \
+when impact is real but mediated through other actors.
 - If the date is unclear, use the article publication date
 - Reliability: High = established outlet or primary source, \
 Medium = secondary reporting, Low = unverified or opinion
@@ -55,7 +60,7 @@ Return this exact JSON structure:
     "date": "YYYY-MM-DD",
     "event_type": "Legal change | Military or coercive action | Sanctions or economic measure | Institutional reform | Alliance or treaty shift | Information-cyber | Other",
     "description": "string (3-5 sentences, analytically focused on power implications)",
-    "impact_on_sovereignty_gap": "Widens | Narrows | No clear effect | Indirect"
+    "pf_signal": "Widens | Narrows | No clear effect | Indirect"
   },
   "actors": [
     {
@@ -154,10 +159,10 @@ def _validate_and_coerce(data: dict[str, Any]) -> dict[str, Any]:
     event["event_type"] = _coerce(
         event.get("event_type", ""), VALID_EVENT_TYPES, "event.event_type"
     )
-    event["impact_on_sovereignty_gap"] = _coerce(
-        event.get("impact_on_sovereignty_gap", ""),
-        VALID_SOVEREIGNTY_IMPACTS,
-        "event.impact_on_sovereignty_gap",
+    event["pf_signal"] = _coerce(
+        event.get("pf_signal", ""),
+        VALID_PF_SIGNAL_IMPACTS,
+        "event.pf_signal",
     )
 
     validated_actors: list[dict[str, Any]] = []

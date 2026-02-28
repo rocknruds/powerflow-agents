@@ -153,16 +153,42 @@ def main() -> None:
         label = "new" if is_new else "existing"
         console.print(f"[green]✓[/green] {actor_name} ({label}): {actor_url}")
 
+    # ── 8b. Score Actors ──────────────────────────────────────────────────────
+    score_results: list[dict] = []
+    if actor_results:
+        console.print("\n[bold cyan]Scoring actors...[/bold cyan]")
+        try:
+            from agents.score.score_agent import score_actors
+            actor_ids = [page_id for page_id, _, _, _ in actor_results]
+            score_results = score_actors(actor_ids)
+            for r in score_results:
+                if r["success"]:
+                    console.print(
+                        f"[green]✓[/green] {r['actor_name']} — "
+                        f"Authority: {r['authority_score']} | "
+                        f"Reach: {r['reach_score']} | "
+                        f"PF Score: {r['pf_score']:.0f}"
+                    )
+                else:
+                    console.print(
+                        f"[yellow]⚠[/yellow] {r['actor_name']} scoring failed: {r['error']}"
+                    )
+        except Exception as exc:
+            console.print(f"[yellow]⚠ Scoring skipped:[/yellow] {exc}")
+            score_results = []
+
     # ── 9. Write Activity Log ─────────────────────────────────────────────────
     console.print("\n[bold cyan]Writing Activity Log entry...[/bold cyan]")
     source_title = source_data.get("title", "Untitled")
     actor_names = ", ".join(name for _, _, name, _ in actor_results)
+    scored_count = sum(1 for r in score_results if r.get("success"))
     log_summary = (
         f"Ingested source, event, intel feed, and {len(actor_results)} actor(s) "
         f"from {source_title}"
     )
     raw_reliability = source_data.get("reliability", "")
     log_confidence = "High" if raw_reliability == "High" else "Medium"
+    notes = f"Actors: {actor_names} | Scored: {scored_count}/{len(actor_results)}"
     try:
         notion_writer.write_activity_log(
             log_title=source_title,
@@ -172,7 +198,7 @@ def main() -> None:
             target_record=event_data.get("event_name", ""),
             source_material=url or "",
             confidence=log_confidence,
-            notes=actor_names,
+            notes=notes,
         )
     except RuntimeError as exc:
         console.print(f"\n[bold red]Notion write failed (Activity Log):[/bold red] {exc}")
@@ -214,7 +240,7 @@ def _print_extraction(source: dict, event: dict) -> None:
     event_table.add_row("Date", event.get("date", ""))
     event_table.add_row("Event Type", event.get("event_type", ""))
     event_table.add_row("Description", event.get("description", ""))
-    event_table.add_row("Impact on Sovereignty Gap", event.get("impact_on_sovereignty_gap", ""))
+    event_table.add_row("PF Signal", event.get("pf_signal", ""))
 
     console.print(
         Panel(source_table, title="[bold]Source[/bold]", border_style="blue")

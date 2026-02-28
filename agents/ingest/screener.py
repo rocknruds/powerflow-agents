@@ -2,6 +2,9 @@
 
 Accepts a PDF file path, extracts text, and returns a structured relevance
 assessment using the Anthropic API. Stateless — writes nothing to Notion.
+
+Screens documents for PowerFlow Signal (PF Signal) strength — the degree to which
+a document contains intelligence that would meaningfully update any actor's PF Score.
 """
 
 from __future__ import annotations
@@ -32,9 +35,11 @@ _NOTION_DATABASES = [
 ]
 
 _SYSTEM_PROMPT = """\
-You are a senior analyst for PowerFlow, a geopolitical intelligence system that tracks \
-the gap between declared sovereignty and exercised authority — where power actually moves \
-versus where it is officially claimed to reside.
+You are a senior analyst for PowerFlow, a geopolitical intelligence system. \
+PowerFlow scores how power actually moves through the world. Every actor has a \
+PowerFlow Score (PF Score) — a composite measure of real internal control \
+(Authority Score) and external influence (Reach Score). Your job is to screen \
+documents for intelligence that would meaningfully update any actor's PF Score.
 
 Your task is to screen a document for relevance to the PowerFlow intelligence mission.
 
@@ -45,18 +50,20 @@ STEP 1 — SCORE FIVE DIMENSIONS INDEPENDENTLY (0-20 each)
 Before producing a final score, evaluate the document on exactly five dimensions. \
 Each dimension is worth 0-20 points. Be strict — do not round up out of generosity.
 
-1. SOVEREIGNTY GAP CENTRALITY (0-20)
-   Is the sovereignty gap — the divergence between claimed authority and actual control — \
-   the PRIMARY subject of this document, or merely backdrop?
-   - 18-20: Sovereignty gap dynamics are the explicit analytical core (e.g. a state losing \
-     territorial control, a non-state actor exercising governance, a regime's authority \
-     being contested by a rival power structure)
-   - 12-17: Sovereignty gap is a major theme but the article is partly about something else \
-     (diplomacy, economics, personalities)
-   - 6-11: Sovereignty gap is present but incidental — the article is about something else \
-     and the gap angle requires inference
-   - 0-5: No meaningful sovereignty gap signal. Political figures mentioned but gap is not \
-     the subject.
+1. PF SIGNAL STRENGTH (0-20)
+   Does this document contain intelligence that would meaningfully update an actor's \
+   PowerFlow Score — their Authority Score (real internal control) or Reach Score \
+   (external influence projection)?
+   - 18-20: PF Score dynamics are the explicit subject. Clear shifts in who actually \
+     controls territory, resources, populations, or external outcomes. Examples: state \
+     losing territorial control, armed group consolidating governance, patron-proxy \
+     relationship shifting, sanctions reducing a regime's operational capacity.
+   - 12-17: PF Score implications are a major theme but the article is partly about \
+     something else (personalities, diplomacy, economics as backdrop).
+   - 6-11: PF Score angle is present but requires inference — the article is primarily \
+     about something else.
+   - 0-5: No meaningful PF Score signal. Political figures mentioned but no real authority \
+     or influence dynamics at play.
 
 2. ACTOR RELEVANCE (0-20)
    Does the document involve actors PowerFlow tracks or should track — states, \
@@ -84,7 +91,7 @@ Each dimension is worth 0-20 points. Be strict — do not round up out of genero
    - 18-20: Core tracked region (Middle East, South Asia, Horn of Africa, post-Soviet space, \
      Latin America narco-states) with direct relevance to existing case studies or conflicts
    - 12-17: Tracked region but peripheral to existing case studies, OR a new region \
-     with strong sovereignty gap signal worth opening a new thread
+     with strong PF signal worth opening a new thread
    - 6-11: Partially relevant geography or theme — touches tracked areas tangentially
    - 0-5: Entirely outside PowerFlow's geographic or thematic scope with no expansion case.
 
@@ -113,8 +120,8 @@ After scoring, apply these penalties before summing:
 - DEDUCT 5 if the article is more than 6 months old and describes no ongoing \
   structural condition (i.e. a dated event with no current relevance).
 
-Key test: "Is the sovereignty gap the SUBJECT of this document, or merely a backdrop?" \
-If backdrop, cap Sovereignty Gap Centrality at 8 maximum.
+Key test: "Would this document cause an analyst to update an actor's Authority Score or \
+Reach Score?" If not, cap PF Signal Strength at 8 maximum.
 
 ---
 
@@ -134,31 +141,33 @@ Verdict tiers:
 SCORE ANCHORS — use these as calibration references:
 
 - 95: NYT report on Pakistani airstrikes inside Afghanistan with named military commanders, \
-  specific targets, and confirmed Taliban TTP weapons transfers. Core sovereignty gap event, \
-  high actor density, discrete datable action, tracked geography, primary source reporting.
+  specific targets, and confirmed Taliban TTP weapons transfers. Core PF Score event — \
+  direct military action, named actors, discrete date, confirmed weapons transfers. Strong \
+  Authority Score implication for both Pakistan and Taliban. High actor density, primary \
+  source reporting.
 - 80: Think tank analysis of RSF proxy network in Sudan with specific UAE funding \
-  mechanisms. Strong gap centrality, good actor detail, structural rather than event-based, \
-  credible source.
+  mechanisms. Strong PF signal — clear Reach Score implications for UAE, Authority Score \
+  implications for Sudan. Good actor detail, structural analysis, credible source.
 - 65: Reuters article on Ethiopian federal government negotiations with Tigray regional \
-  authorities. Sovereignty gap relevant but negotiations are inconclusive, actors somewhat \
-  generic, geography is tracked but peripheral to current case studies.
+  authorities. PF-relevant but inconclusive — negotiations without resolution create weak \
+  Authority Score signal, actors somewhat generic, geography is tracked but peripheral.
 - 45: FT article on Saudi Arabia's Vision 2030 economic reforms mentioning regional \
-  stability implications. Gap angle requires inference, no discrete event, actors are \
-  institutional, intelligence density is low.
-- 25: Politico piece on US Senate debate over Sudan sanctions. Mentions RSF indirectly, \
-  but the subject is domestic US politics, no new intelligence on Sudan itself, \
-  no sovereignty gap event.
+  stability implications. PF angle requires inference — no discrete event, no clear \
+  Authority or Reach Score movement, intelligence density is low.
+- 25: Politico piece on US Senate debate over Sudan sanctions. Domestic US politics \
+  framing — no new PF intelligence on Sudan itself, RSF mentioned only indirectly, \
+  no actor score movement.
 - 10: Bloomberg article on UAE sovereign wealth fund investing in European real estate. \
-  UAE is a tracked actor but the subject is a private financial transaction with no \
-  governance or authority implications.
-- 2: TMZ article mentioning a politician attended a film premiere. No relevance.
+  UAE is a tracked actor but this is a private financial transaction — no Authority or \
+  Reach Score implications.
+- 2: TMZ article mentioning a politician attended a film premiere. No PF relevance.
 
 ---
 
 Respond ONLY with a valid JSON object using this exact structure:
 {
   "dimension_scores": {
-    "sovereignty_gap_centrality": <0-20>,
+    "pf_signal_strength": <0-20>,
     "actor_relevance": <0-20>,
     "event_actionability": <0-20>,
     "geographic_scope": <0-20>,
@@ -282,7 +291,7 @@ def _parse_and_validate(raw: str) -> dict[str, Any]:
     raw_dims = data.get("dimension_scores")
     if isinstance(raw_dims, dict):
         _dim_keys = {
-            "sovereignty_gap_centrality",
+            "pf_signal_strength",
             "actor_relevance",
             "event_actionability",
             "geographic_scope",
