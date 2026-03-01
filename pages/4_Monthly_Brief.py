@@ -39,13 +39,7 @@ if "monthly_saved_url" not in st.session_state:
 
 # ── Data fetch ────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=300, show_spinner=False)
-def load_data_monthly(lookback_days: int = 30) -> dict:
-    return fetcher.fetch_all(lookback_days=lookback_days)
-
-
 if st.button("🔄 Refresh"):
-    st.cache_data.clear()
     st.session_state.monthly_data = None
     st.session_state.monthly_brief_text = None
     st.session_state.monthly_saved_url = None
@@ -54,7 +48,7 @@ if st.button("🔄 Refresh"):
 if st.session_state.monthly_data is None:
     with st.spinner("Fetching data from Notion…"):
         try:
-            st.session_state.monthly_data = load_data_monthly(lookback_days=_LOOKBACK)
+            st.session_state.monthly_data = fetcher.fetch_all(lookback_days=_LOOKBACK)
         except Exception as exc:
             st.error(f"Failed to fetch Notion data: {exc}")
             st.stop()

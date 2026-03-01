@@ -39,13 +39,7 @@ if "weekly_saved_url" not in st.session_state:
 
 # ── Data fetch ────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=300, show_spinner=False)
-def load_data_weekly(lookback_days: int = 7) -> dict:
-    return fetcher.fetch_all(lookback_days=lookback_days)
-
-
 if st.button("🔄 Refresh"):
-    st.cache_data.clear()
     st.session_state.weekly_data = None
     st.session_state.weekly_brief_text = None
     st.session_state.weekly_saved_url = None
@@ -54,7 +48,7 @@ if st.button("🔄 Refresh"):
 if st.session_state.weekly_data is None:
     with st.spinner("Fetching data from Notion…"):
         try:
-            st.session_state.weekly_data = load_data_weekly(lookback_days=_LOOKBACK)
+            st.session_state.weekly_data = fetcher.fetch_all(lookback_days=_LOOKBACK)
         except Exception as exc:
             st.error(f"Failed to fetch Notion data: {exc}")
             st.stop()
