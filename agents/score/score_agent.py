@@ -9,6 +9,7 @@ import json
 import re
 
 import anthropic
+import requests
 from notion_client import Client
 from notion_client.errors import APIResponseError
 from rich.console import Console
@@ -22,6 +23,8 @@ from config.settings import (
 )
 
 console = Console()
+
+_SCORE_SNAPSHOTS_DB_ID = "e96696510cac4435a52e89be9fb6a969"
 
 # ── Baselines by actor type ───────────────────────────────────────────────────
 
@@ -129,6 +132,8 @@ def score_actor(actor_page_id: str) -> dict:
     auth_baseline = _AUTHORITY_BASELINES.get(actor_type, _DEFAULT_BASELINE)
     reach_baseline = _REACH_BASELINES.get(actor_type, _DEFAULT_BASELINE)
 
+    old_pf_score = _fetch_existing_pf_score(actor_page_id)
+
     user_msg = _build_user_message(context, auth_baseline, reach_baseline)
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -155,12 +160,15 @@ def score_actor(actor_page_id: str) -> dict:
 
     pf_score = scores["authority_score"] * 0.6 + scores["reach_score"] * 0.4
 
+    _write_score_snapshot(actor_page_id, actor_name, pf_score, old_pf_score, scores["reasoning"])
+
     return {
         "actor_name": actor_name,
         "actor_page_id": actor_page_id,
         "authority_score": scores["authority_score"],
         "reach_score": scores["reach_score"],
         "pf_score": pf_score,
+        "old_pf_score": old_pf_score,
         "reasoning": scores["reasoning"],
         "success": True,
         "error": None,
@@ -202,6 +210,64 @@ def score_actors(actor_page_ids: list[str]) -> list[dict]:
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
+def _fetch_existing_pf_score(actor_page_id: str) -> float | None:
+    """Return the current PF Score for an actor page, or None if unavailable."""
+    try:
+        client = Client(auth=NOTION_API_KEY)
+        page = client.pages.retrieve(page_id=actor_page_id)
+        props = page.get("properties", {})
+        authority = props.get("Authority Score", {}).get("number")
+        reach = props.get("Reach Score", {}).get("number")
+        if authority is None or reach is None:
+            return None
+        return authority * 0.6 + reach * 0.4
+    except Exception:
+        return None
+
+
+def _write_score_snapshot(
+    actor_page_id: str,
+    actor_name: str,
+    new_pf_score: float,
+    old_pf_score: float | None,
+    reasoning: str,
+) -> None:
+    """Write a Score Snapshot record to Notion. Never raises."""
+    try:
+        delta = (new_pf_score - old_pf_score) if old_pf_score is not None else None
+        if delta == 0.0:
+            return
+
+        today = datetime.date.today().isoformat()
+        title = f"{actor_name} — PF {new_pf_score:.0f} ({today})"
+        trigger_notes = reasoning[:2000]
+
+        url = "https://api.notion.com/v1/pages"
+        headers = {
+            "Authorization": f"Bearer {NOTION_API_KEY}",
+            "Content-Type": "application/json",
+            "Notion-Version": "2022-06-28",
+        }
+        payload = {
+            "parent": {"database_id": _SCORE_SNAPSHOTS_DB_ID},
+            "properties": {
+                "Title": {"title": [{"text": {"content": title}}]},
+                "Actor": {"relation": [{"id": actor_page_id}]},
+                "Score": {"number": round(new_pf_score, 1)},
+                "Score Delta": {"number": round(delta, 1) if delta is not None else 0},
+                "Snapshot Type": {"select": {"name": "Event-Triggered"}},
+                "Snapshot Date": {"date": {"start": today}},
+                "Trigger Notes": {"rich_text": [{"text": {"content": trigger_notes}}]},
+                "Agent Source": {"rich_text": [{"text": {"content": "Agent-S: Score"}}]},
+                "Visibility": {"select": {"name": "Internal"}},
+            },
+        }
+        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response.raise_for_status()
+    except Exception as exc:
+        console.print(f"[yellow]Warning:[/yellow] Failed to write Score Snapshot for {actor_name}: {exc}")
+
 
 def _build_user_message(context: dict, auth_baseline: int, reach_baseline: int) -> str:
     actor_name = context["name"]

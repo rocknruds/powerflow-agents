@@ -134,13 +134,16 @@ def _date_range_label(lookback_days: int) -> str:
 
 def fetch_events(lookback_days: int = 7) -> list[dict[str, Any]]:
     """Fetch recent Events Timeline entries."""
-    cutoff = _iso_cutoff(lookback_days)
+    cutoff_date = (
+        datetime.datetime.now(datetime.timezone.utc)
+        - datetime.timedelta(days=lookback_days)
+    ).date().isoformat()
     payload = {
         "filter": {
-            "timestamp": "created_time",
-            "created_time": {"on_or_after": cutoff},
+            "property": "Date",
+            "date": {"on_or_after": cutoff_date},
         },
-        "sorts": [{"timestamp": "created_time", "direction": "descending"}],
+        "sorts": [{"property": "Date", "direction": "descending"}],
     }
 
     try:

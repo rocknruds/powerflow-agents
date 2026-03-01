@@ -153,6 +153,11 @@ def main() -> None:
         label = "new" if is_new else "existing"
         console.print(f"[green]✓[/green] {actor_name} ({label}): {actor_url}")
 
+    # ── 8a. Match Conflicts ───────────────────────────────────────────────────
+    console.print("\n[bold cyan]Matching conflicts...[/bold cyan]")
+    from agents.ingest.conflict_matcher import run_conflict_matching
+    matched = run_conflict_matching(event_page_id, event_data, data.get("actors", []))
+
     # ── 8b. Score Actors ──────────────────────────────────────────────────────
     score_results: list[dict] = []
     if actor_results:
@@ -200,13 +205,17 @@ def main() -> None:
         console.print("[yellow]⚠[/yellow] Activity log write skipped (non-fatal).")
 
     # ── 10. Final summary ─────────────────────────────────────────────────────
+    conflicts_line = (
+        f"\n[bold]Conflicts:[/bold]  {', '.join(matched)}" if matched else ""
+    )
     console.print(
         Panel(
             f"[bold green]✓ Ingestion complete[/bold green]\n\n"
             f"[bold]Source:[/bold]     {source_page_url}\n"
             f"[bold]Event:[/bold]      {event_page_url}\n"
             f"[bold]Intel Feed:[/bold] {intel_page_url}\n"
-            f"[bold]Actors:[/bold]     {len(actor_results)} written",
+            f"[bold]Actors:[/bold]     {len(actor_results)} written"
+            f"{conflicts_line}",
             title="PowerFlow",
             border_style="green",
         )
