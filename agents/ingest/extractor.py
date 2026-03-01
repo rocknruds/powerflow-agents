@@ -20,6 +20,54 @@ from config.settings import (
 
 console = Console()
 
+ACTOR_NAME_VARIANTS: dict[str, str] = {
+    "russia": "Russia",
+    "russian federation": "Russia",
+    "the russian federation": "Russia",
+    "united states": "United States",
+    "united states of america": "United States",
+    "the united states": "United States",
+    "usa": "United States",
+    "u.s.": "United States",
+    "us": "United States",
+    "china": "China (CCP)",
+    "people's republic of china": "China (CCP)",
+    "prc": "China (CCP)",
+    "ccp": "China (CCP)",
+    "iran": "Iran",
+    "islamic republic of iran": "Iran",
+    "taliban": "Afghanistan (Taliban)",
+    "islamic emirate of afghanistan": "Afghanistan (Taliban)",
+    "houthis": "Houthis",
+    "ansar allah": "Houthis",
+    "hezbollah": "Hezbollah",
+    "party of god": "Hezbollah",
+    "irgc": "IRGC",
+    "islamic revolutionary guard corps": "IRGC",
+    "isis": "ISIS",
+    "islamic state": "ISIS",
+    "isil": "ISIS",
+    "daesh": "ISIS",
+    "ttp": "Tehreek-e-Taliban Pakistan (TTP)",
+    "tehreek-e-taliban": "Tehreek-e-Taliban Pakistan (TTP)",
+    "pmf": "Iraq (PMF)",
+    "popular mobilization forces": "Iraq (PMF)",
+    "rsf": "Rapid Support Forces (RSF)",
+    "rapid support forces": "Rapid Support Forces (RSF)",
+    "uae": "United Arab Emirates",
+    "united arab emirates": "United Arab Emirates",
+    "uk": "United Kingdom",
+    "united kingdom": "United Kingdom",
+    "great britain": "United Kingdom",
+}
+
+
+def normalize_actor_name(name: str) -> str:
+    """Return the canonical actor name for known variants, or title-case the original."""
+    key = name.lower().strip()
+    return ACTOR_NAME_VARIANTS.get(key, name.strip().title())
+
+
 _SYSTEM_PROMPT = """\
 You are a geopolitical intelligence analyst working within the PowerFlow system. \
 PowerFlow is a geopolitical intelligence system that scores how power actually moves \
@@ -169,6 +217,7 @@ def _validate_and_coerce(data: dict[str, Any]) -> dict[str, Any]:
     for actor in actors:
         if not isinstance(actor, dict):
             continue
+        actor["name"] = normalize_actor_name(actor.get("name", ""))
         actor["actor_type"] = _coerce(
             actor.get("actor_type", ""),
             VALID_ACTOR_TYPES,

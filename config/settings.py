@@ -11,7 +11,10 @@ NOTION_EVENTS_DB_ID = os.environ["NOTION_EVENTS_DB_ID"]
 NOTION_SOURCES_DB_ID = os.environ["NOTION_SOURCES_DB_ID"]
 NOTION_INTEL_FEEDS_DB_ID = os.environ["NOTION_INTEL_FEEDS_DB_ID"]
 NOTION_ACTORS_DB_ID = os.environ.get("NOTION_ACTORS_DB_ID", "742dea54-b13e-4c64-81b7-2c058483de4e")
-NOTION_ACTIVITY_LOG_DB_ID = os.environ.get("NOTION_ACTIVITY_LOG_DB_ID", "d4e38407c7914f3ba3b401d8bd492ce1")
+NOTION_ACTIVITY_LOG_DB_ID = os.environ.get("NOTION_ACTIVITY_LOG_DB_ID", "45cca9af-e55d-4f2d-8aeb-a155b4ecf65f")
+
+# Briefing agent — set once the Briefs database is created in Notion
+BRIEFS_DB_ID = os.environ.get("BRIEFS_DB_ID", "")
 
 # Claude model settings
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"

@@ -205,52 +205,77 @@ def write_actors(
 
 
 def write_activity_log(
-    log_title: str,
-    summary: str,
-    action_type: str,
-    target_database: str,
-    target_record: str = "",
-    source_material: str = "",
-    confidence: str = "High",
+    article_title: str,
+    screening_score: int | None = None,
+    screening_verdict: str | None = None,
+    databases_written: list[str] | None = None,
+    actor_count: int = 0,
+    status: str = "Completed",
     notes: str = "",
-    requires_human_review: bool = False,
-) -> tuple[str, str]:
-    """Create an entry in the Agent Activity Log database.
+) -> tuple[str, str] | None:
+    """Write a record to the Agent Activity Log database after an ingestion run.
 
-    Returns (page_id, page_url).
-    Raises RuntimeError on API failure.
+    Logs ingestion metadata — title, score, verdict, actor count, databases touched,
+    and status (``"Completed"`` or ``"Rejected"``). Pass ``notes`` to capture error messages
+    on failure.
+
+    Returns ``(page_id, page_url)`` on success, or ``None`` on any failure.
+    Never raises — a logging failure must never crash an ingestion run.
     """
-    client = _get_client()
-
-    properties: dict[str, Any] = {
-        "Log Title": _title(log_title),
-        "Agent ID": _select("Agent-A: Ingestion"),
-        "Action Type": _select(action_type),
-        "Target Database": _select(target_database),
-        "Status": _select("Completed"),
-        "Confidence": _select(confidence),
-        "Summary": _rich_text(summary),
-        "Target Record": _rich_text(target_record),
-        "Source Material": _rich_text(source_material),
-        "Notes": _rich_text(notes),
-        "Requires Human Review": {"checkbox": requires_human_review},
-        "Visibility": _select("Internal"),
-        "Timestamp": {"date": {"start": datetime.date.today().isoformat()}},
-    }
-
     try:
-        response = client.pages.create(
-            parent={"database_id": NOTION_ACTIVITY_LOG_DB_ID},
-            properties=properties,
-        )
-    except APIResponseError as exc:
-        raise RuntimeError(
-            f"Notion API error writing Activity Log record: {exc.status} — {exc.body}"
-        ) from exc
+        client = _get_client()
+        now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
 
-    page_id = response["id"]
-    page_url = response.get("url", f"https://notion.so/{page_id.replace('-', '')}")
-    return page_id, page_url
+        full_properties: dict[str, Any] = {
+            "Log Title": _title(article_title),
+            "Agent ID": _select("Agent-A: Ingestion"),
+            "Action Type": _select("Ingest"),
+            "Timestamp": {"date": {"start": now_utc}},
+            "Status": _select(status),
+            "Actor Count": {"number": actor_count},
+            "Visibility": _select("Internal"),
+        }
+
+        if screening_score is not None:
+            full_properties["Screening Score"] = {"number": screening_score}
+        if screening_verdict:
+            full_properties["Screening Verdict"] = _rich_text(screening_verdict)
+        if databases_written:
+            full_properties["Summary"] = _rich_text(
+                "Wrote to: " + ", ".join(databases_written)
+            )
+        if notes:
+            full_properties["Notes"] = _rich_text(notes)
+
+        # Minimal set of fields that are most likely to exist in any version of the schema.
+        # Used as a fallback if the full write is rejected due to unknown properties.
+        core_properties: dict[str, Any] = {
+            k: full_properties[k]
+            for k in ("Log Title", "Timestamp", "Status")
+            if k in full_properties
+        }
+        if notes:
+            core_properties["Notes"] = full_properties["Notes"]
+
+        try:
+            response = client.pages.create(
+                parent={"database_id": NOTION_ACTIVITY_LOG_DB_ID},
+                properties=full_properties,
+            )
+        except APIResponseError:
+            # Retry with only core fields if the schema doesn't support some properties.
+            response = client.pages.create(
+                parent={"database_id": NOTION_ACTIVITY_LOG_DB_ID},
+                properties=core_properties,
+            )
+
+        page_id = response["id"]
+        page_url = response.get("url", f"https://notion.so/{page_id.replace('-', '')}")
+        return page_id, page_url
+
+    except Exception as exc:
+        console.print(f"[yellow]⚠ Activity log write skipped:[/yellow] {exc}")
+        return None
 
 
 def _find_actor_by_name(client: Client, name: str) -> tuple[str, str] | None:

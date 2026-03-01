@@ -179,31 +179,25 @@ def main() -> None:
 
     # ── 9. Write Activity Log ─────────────────────────────────────────────────
     console.print("\n[bold cyan]Writing Activity Log entry...[/bold cyan]")
-    source_title = source_data.get("title", "Untitled")
     actor_names = ", ".join(name for _, _, name, _ in actor_results)
     scored_count = sum(1 for r in score_results if r.get("success"))
-    log_summary = (
-        f"Ingested source, event, intel feed, and {len(actor_results)} actor(s) "
-        f"from {source_title}"
+    log_notes = f"Actors: {actor_names} | Scored: {scored_count}/{len(actor_results)}"
+    log_result = notion_writer.write_activity_log(
+        article_title=source_data.get("title", "Untitled"),
+        databases_written=[
+            "Sources",
+            "Events Timeline",
+            "Intelligence Feeds",
+            "Actors Registry",
+        ],
+        actor_count=len(actor_results),
+        status="Completed",
+        notes=log_notes,
     )
-    raw_reliability = source_data.get("reliability", "")
-    log_confidence = "High" if raw_reliability == "High" else "Medium"
-    notes = f"Actors: {actor_names} | Scored: {scored_count}/{len(actor_results)}"
-    try:
-        notion_writer.write_activity_log(
-            log_title=source_title,
-            summary=log_summary,
-            action_type="Create",
-            target_database="Events Timeline",
-            target_record=event_data.get("event_name", ""),
-            source_material=url or "",
-            confidence=log_confidence,
-            notes=notes,
-        )
-    except RuntimeError as exc:
-        console.print(f"\n[bold red]Notion write failed (Activity Log):[/bold red] {exc}")
-        sys.exit(1)
-    console.print("[green]✓[/green] Activity log entry created.")
+    if log_result:
+        console.print("[green]✓[/green] Activity log entry created.")
+    else:
+        console.print("[yellow]⚠[/yellow] Activity log write skipped (non-fatal).")
 
     # ── 10. Final summary ─────────────────────────────────────────────────────
     console.print(
