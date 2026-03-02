@@ -252,3 +252,74 @@ def _extract_select(prop: dict) -> str:
 def _extract_date(prop: dict) -> str:
     date_obj = prop.get("date") or {}
     return date_obj.get("start", "")
+
+
+def fetch_peer_actors(actor_page_id: str, actor_type: str, limit: int = 5) -> list[dict]:
+    """Fetch scored peer actors of the same type for calibration context.
+
+    Returns up to `limit` actors with non-null scores, excluding the actor being scored.
+    Used to give the score agent a local calibration frame alongside global anchors.
+    """
+    from config.settings import NOTION_ACTORS_DB_ID, NOTION_API_KEY
+
+    url = f"https://api.notion.com/v1/databases/{NOTION_ACTORS_DB_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    payload = {
+        "filter": {
+            "and": [
+                {
+                    "property": "Actor Type",
+                    "select": {"equals": actor_type},
+                },
+                {
+                    "property": "Authority Score",
+                    "number": {"is_not_empty": True},
+                },
+                {
+                    "property": "Reach Score",
+                    "number": {"is_not_empty": True},
+                },
+            ]
+        },
+        "page_size": 20,
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response.raise_for_status()
+    except requests.exceptions.RequestException:
+        return []
+
+    peers = []
+    for page in response.json().get("results", []):
+        if page["id"] == actor_page_id:
+            continue
+        props = page.get("properties", {})
+        name_prop = props.get("Name", {})
+        name = "".join(item.get("plain_text", "") for item in name_prop.get("title", []))
+        if not name:
+            continue
+        authority = props.get("Authority Score", {}).get("number")
+        reach = props.get("Reach Score", {}).get("number")
+        if authority is None or reach is None:
+            continue
+        pf = round(authority * 0.6 + reach * 0.4, 1)
+        reasoning_prop = props.get("Score Reasoning", {})
+        reasoning = "".join(
+            item.get("plain_text", "") for item in reasoning_prop.get("rich_text", [])
+        )
+        peers.append({
+            "name": name,
+            "authority": int(authority),
+            "reach": int(reach),
+            "pf_score": pf,
+            "reasoning_snippet": reasoning[:200] if reasoning else "",
+        })
+        if len(peers) >= limit:
+            break
+
+    return peers

@@ -26,8 +26,8 @@ CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 CLAUDE_MAX_TOKENS = 2048
 
 # Score Agent settings
-CLAUDE_SCORE_MODEL = os.getenv("CLAUDE_SCORE_MODEL", CLAUDE_MODEL)  # defaults to Haiku
-CLAUDE_SCORE_MAX_TOKENS = 512  # scores are small JSON objects
+CLAUDE_SCORE_MODEL = os.getenv("CLAUDE_SCORE_MODEL", "claude-sonnet-4-6")
+CLAUDE_SCORE_MAX_TOKENS = 768  # scores are small JSON objects
 
 # Valid enum values for validation
 VALID_SOURCE_TYPES = {
