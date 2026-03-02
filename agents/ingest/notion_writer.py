@@ -395,6 +395,7 @@ def _create_actor(client: Client, actor: dict[str, Any]) -> tuple[str, str]:
     notion_actor_type = ACTOR_TYPE_NOTION_MAP.get(raw_actor_type, raw_actor_type)
     iso3 = actor.get("iso3")
     role_in_event = actor.get("role_in_event", "")
+    sub_type = actor.get("sub_type")
 
     properties: dict[str, Any] = {
         "Name": _title(name),
@@ -405,6 +406,8 @@ def _create_actor(client: Client, actor: dict[str, Any]) -> tuple[str, str]:
     }
     if iso3:
         properties["ISO3 / Identifier"] = _rich_text(iso3)
+    if sub_type:
+        properties["Sub-Type"] = _select(sub_type)
 
     pf_score_properties = {
         "Authority Score": {"number": None},

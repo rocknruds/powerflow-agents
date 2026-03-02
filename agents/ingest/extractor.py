@@ -114,6 +114,7 @@ Return this exact JSON structure:
     {
       "name": "string — canonical name of the actor",
       "actor_type": "State | Non-State | Hybrid | IGO | Individual",
+      "sub_type": "string — for Individual actors: always set to 'Influential Figure'. For all other actor types: null",
       "role_in_event": "string — one sentence describing what this actor did in the article",
       "iso3": "string — ISO 3166-1 alpha-3 country code if applicable, else null"
     }
@@ -121,11 +122,15 @@ Return this exact JSON structure:
 }
 
 Actor extraction rules:
-- Extract all meaningful actors: states, governments, armed groups, individuals in official capacity, international organizations
-- Do NOT extract generic references such as 'the public', 'citizens', or 'local population'
-- Aim for 2-6 actors per article
+- Extract only actors that exercise independent decision-making authority relevant to the PF Score of this event
+- INCLUDE: sovereign states, non-state armed groups, international organizations, and individuals who are heads of state/government or who are the primary named decision-maker driving the event
+- DO NOT extract: military commands (e.g. CENTCOM, AFRICOM, Pacific Command), government departments or agencies (e.g. Pentagon, State Department, Treasury, IRGC Quds Force as a sub-unit of IRGC), legislative bodies (Congress, Parliament, Knesset), or military advisory bodies (Joint Chiefs of Staff, General Staff) — these are sub-units of the parent state actor and should not be created as separate actors
+- DO NOT extract generic references such as 'the public', 'citizens', 'local population', or unnamed officials
+- For individuals: only extract if they are a head of state/government (president, prime minister, supreme leader) OR if they are the single named central decision-maker in the event with no parent state actor already covering their role. Set sub_type to "Influential Figure" for all individuals.
+- If both a state and its head of state appear, include both — the individual adds analytical resolution beyond the state record
+- Aim for 2-5 actors per article
 - Use the canonical, full name for each actor (e.g. "United States" not "US", "Wagner Group" not "Wagner")
-- iso3 should be the ISO 3166-1 alpha-3 code of the actor's primary country (e.g. "USA", "RUS"), or null if not applicable\
+- iso3 should be the ISO 3166-1 alpha-3 code of the actor's primary country (e.g. "USA", "RUS"), or null if not applicable
 """
 
 _STRICT_SUFFIX = (
@@ -227,6 +232,8 @@ def _validate_and_coerce(data: dict[str, Any]) -> dict[str, Any]:
         # Normalize iso3: keep only non-empty strings, coerce null/None to None
         iso3 = actor.get("iso3")
         actor["iso3"] = iso3 if isinstance(iso3, str) and iso3.strip() else None
+        sub_type = actor.get("sub_type")
+        actor["sub_type"] = sub_type if isinstance(sub_type, str) and sub_type.strip() else None
         validated_actors.append(actor)
 
     return {"source": source, "event": event, "actors": validated_actors}

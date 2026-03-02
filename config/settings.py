@@ -16,6 +16,11 @@ NOTION_ACTIVITY_LOG_DB_ID = os.environ.get("NOTION_ACTIVITY_LOG_DB_ID", "d4e3840
 # Briefing agent — set once the Briefs database is created in Notion
 BRIEFS_DB_ID = os.environ.get("BRIEFS_DB_ID", "df4e70c01fa1460d8f9bb6c26f05dc1a")
 
+# Recalibration agent — Actors Registry, Score Snapshots, Activity Log (same Activity Log as ingestion)
+NOTION_SCORE_SNAPSHOTS_DB_ID = os.environ.get(
+    "NOTION_SCORE_SNAPSHOTS_DB_ID", "e96696510cac4435a52e89be9fb6a969"
+)
+
 # Claude model settings
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 CLAUDE_MAX_TOKENS = 2048
