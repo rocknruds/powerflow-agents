@@ -259,6 +259,18 @@ if run_clicked:
                 actor_ids = [pid for pid, _, _, _ in actor_results]
                 score_results = score_actors(actor_ids) if actor_ids else []
 
+                actor_names = ", ".join(name for _, _, name, _ in actor_results)
+                scored_count = sum(1 for r in score_results if r.get("success"))
+                notion_writer.write_activity_log(
+                    article_title=source_data.get("title", "Untitled"),
+                    screening_score=st.session_state["screen_result"].get("score"),
+                    screening_verdict=st.session_state["screen_result"].get("verdict"),
+                    databases_written=["Sources", "Events Timeline", "Intelligence Feeds", "Actors Registry"],
+                    actor_count=len(actor_results),
+                    status="Completed",
+                    notes=f"Actors: {actor_names} | Scored: {scored_count}/{len(actor_results)}",
+                )
+
                 st.session_state["ingestion_status"] = {
                     "success": True,
                     "source_url": source_page_url,

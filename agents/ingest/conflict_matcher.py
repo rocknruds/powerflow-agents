@@ -48,7 +48,7 @@ def fetch_conflicts() -> list[dict]:
                 payload["start_cursor"] = start_cursor
 
             resp = requests.post(
-                url, headers=_NOTION_HEADERS, json=payload, timeout=15
+                url, headers=_NOTION_HEADERS, json=payload, timeout=30
             )
             resp.raise_for_status()
             body = resp.json()
@@ -171,7 +171,7 @@ def link_conflicts_to_event(
                 }
             }
         }
-        resp = requests.patch(url, headers=_NOTION_HEADERS, json=payload, timeout=15)
+        resp = requests.patch(url, headers=_NOTION_HEADERS, json=payload, timeout=30)
         resp.raise_for_status()
     except Exception as exc:
         console.print(f"[yellow]⚠ Warning:[/yellow] Could not link conflicts to event: {exc}")

@@ -296,7 +296,7 @@ def _find_actor_by_name(client: Client, name: str) -> tuple[str, str] | None:
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
         raise RuntimeError(
