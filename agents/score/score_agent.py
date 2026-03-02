@@ -2,6 +2,9 @@
 
 Computes Authority Score and Reach Score for geopolitical actors using Claude,
 then writes results back to the Actors Registry in Notion.
+
+Relationship-aware: traverses Patron State and proxy actor relations so that
+scores reflect the dependency network, not just isolated event signals.
 """
 
 import datetime
@@ -66,36 +69,48 @@ PF Score = Authority * 0.6 + Reach * 0.4 (computed automatically — do not retu
 SCORING APPROACH:
 1. Start from the baseline for this actor's type (provided in input)
 2. Apply event signals: for each linked event, reason about what the PF Signal means \
-   specifically for THIS actor (not generically). Widens = actor losing control/influence. \
-   Narrows = actor consolidating. Recent events (last 6 months) carry more weight.
-3. Apply case study context if available: treat as long-run structural anchor, \
+   specifically for THIS actor. Widens = actor losing control/influence. \
+   Narrows = actor consolidating. Recent events carry more weight.
+3. Apply relationship context (critical — this is where most analysts go wrong):
+
+   PATRON STATE: If this actor has a patron, the patron's current PF Score is a \
+   structural ceiling on the actor's Reach. An agent cannot project influence beyond \
+   what its patron enables. If the patron has collapsed, degraded, or been destroyed, \
+   this must reduce the actor's Reach Score significantly — even if no direct event \
+   links the two. The relationship IS the mechanism.
+
+   PROXY NETWORK: If this actor sponsors proxy actors, their health reflects the \
+   patron's real reach. A patron whose proxies are all degraded or destroyed has lost \
+   its primary mechanism of external influence, regardless of its domestic authority.
+
+4. Apply case study context if available: treat as long-run structural anchor, \
    can shift baseline by up to 15 points either direction on either sub-score.
-4. Produce a final score and a reasoning note.
 
 SCORE RANGES:
 
 Authority Score:
-- 80-100: Near-total effective control within claimed domain. Challenges are minor or suppressed.
-- 60-79: Strong but imperfect control. Meaningful opposition or gaps exist but don't threaten core grip.
-- 40-59: Contested control. Rival power structures, significant ungoverned areas, or dependency on external support.
-- 20-39: Fragmented. Nominal authority only in significant portions of claimed domain.
-- 0-19: Failed or non-existent internal control. Exists as a label more than a functioning structure.
+- 80-100: Near-total effective control. Challenges are minor or suppressed.
+- 60-79: Strong but imperfect control. Meaningful opposition exists but doesn't threaten core grip.
+- 40-59: Contested. Rival power structures, significant ungoverned areas, or external dependency.
+- 20-39: Fragmented. Nominal authority only across significant portions of claimed domain.
+- 0-19: Failed or non-existent. Exists as a label more than a functioning structure.
 
 Reach Score:
-- 80-100: Shapes outcomes in multiple external theaters. Other actors must account for this one.
+- 80-100: Shapes outcomes in multiple external theaters. Others must account for this actor.
 - 60-79: Significant regional influence. Can shift outcomes in specific external arenas.
 - 40-59: Moderate reach. Influence felt but not decisive externally.
 - 20-39: Mostly reactive. Limited ability to shape external outcomes.
 - 0-19: No meaningful external reach. Domestically confined or irrelevant to others.
 
-REASONING NOTE: Write 2-3 sentences that explain the score with reference to specific \
-events or structural conditions. Do not be generic. Name the dynamics. This note will \
-appear on the public-facing dashboard — write it for an informed layperson, not an analyst. \
-Example of good reasoning: "Pakistan's Authority Score reflects deepening fragmentation \
-along the Afghan border following February 2026 airstrikes that failed to dislodge TTP \
-from Pakistani territory it effectively governs. Its Reach Score remains moderate — \
-nuclear deterrence and regional positioning give it leverage, but the loss of Taliban \
-patronage removes a key instrument of external influence."
+REASONING NOTE: 2-3 sentences explaining the score with reference to specific events \
+or structural conditions. Name the dynamics. Reference relationship dependencies explicitly \
+when they drive the score. Write for an informed layperson — not an analyst.
+Example: "Hezbollah's Reach Score has collapsed following Iran's military dismantlement \
+in February 2026 — the IRGC's destruction removed the financial, logistical, and \
+intelligence architecture that made Hezbollah's external operations possible. Its \
+Authority Score is more resilient: the parallel governance structures in southern Lebanon \
+predate IRGC patronage and won't evaporate overnight, but without resupply, degradation \
+is inevitable."
 
 CRITICAL: Return ONLY a valid JSON object. No markdown, no commentary.
 {
@@ -117,13 +132,13 @@ _STRICT_SUFFIX = (
 def score_actor(actor_page_id: str) -> dict:
     """Orchestrate the full scoring flow for one actor.
 
-    1. Fetches actor context from Notion.
-    2. Builds a Claude prompt.
+    1. Fetches actor context including relationship web from Notion.
+    2. Builds a relationship-aware Claude prompt.
     3. Parses and validates the JSON response.
     4. Writes scores back to Notion.
+    5. Writes a score snapshot.
 
     Returns a result dict with actor_name, scores, reasoning, success, error.
-    Raises RuntimeError on unrecoverable failure.
     """
     context = notion_reader.fetch_actor_context(actor_page_id)
     actor_name = context["name"]
@@ -159,7 +174,6 @@ def score_actor(actor_page_id: str) -> dict:
     _write_scores_to_notion(actor_page_id, scores)
 
     pf_score = scores["authority_score"] * 0.6 + scores["reach_score"] * 0.4
-
     _write_score_snapshot(actor_page_id, actor_name, pf_score, old_pf_score, scores["reasoning"])
 
     return {
@@ -176,13 +190,7 @@ def score_actor(actor_page_id: str) -> dict:
 
 
 def score_actors(actor_page_ids: list[str]) -> list[dict]:
-    """Score a list of actors, logging progress with rich.
-
-    Does not stop on individual failures — catches exceptions per actor,
-    logs the error, and continues to the next.
-
-    Returns a list of result dicts (see score_actor for schema).
-    """
+    """Score a list of actors. Does not stop on individual failures."""
     results = []
     total = len(actor_page_ids)
 
@@ -207,6 +215,87 @@ def score_actors(actor_page_ids: list[str]) -> list[dict]:
             })
 
     return results
+
+
+# ── Prompt builder ────────────────────────────────────────────────────────────
+
+def _build_user_message(context: dict, auth_baseline: int, reach_baseline: int) -> str:
+    actor_name = context["name"]
+    actor_type = context["actor_type"]
+    proxy_depth = context.get("proxy_depth", "None")
+    linked_events = context["linked_events"]
+    linked_case_studies = context["linked_case_studies"]
+    patron_context = context.get("patron_context")
+    proxy_actors = context.get("proxy_actors", [])
+
+    # Events block
+    events_lines = []
+    for ev in linked_events:
+        date_str = ev.get("date") or "unknown date"
+        ev_name = ev.get("event_name", "Unnamed event")
+        signal = ev.get("pf_signal", "")
+        desc = ev.get("description", "")
+        events_lines.append(f"- [{date_str}] {ev_name} | PF Signal: {signal} | {desc}")
+    events_block = "\n".join(events_lines) if events_lines else "(none)"
+
+    # Case studies block
+    cs_lines = []
+    for cs in linked_case_studies:
+        title = cs.get("title", "Untitled")
+        summary = cs.get("summary", "")
+        cs_lines.append(f"- {title}: {summary}")
+    cs_block = "\n".join(cs_lines) if cs_lines else "(none)"
+
+    # Patron block — this is the key relationship context
+    if patron_context:
+        p = patron_context
+        pf_str = f"{p['pf_score']:.0f}" if p["pf_score"] is not None else "unscored"
+        auth_str = f"{p['authority_score']}" if p["authority_score"] is not None else "?"
+        reach_str = f"{p["reach_score"]}" if p["reach_score"] is not None else "?"
+        patron_block = (
+            f"Patron: {p['name']} | Status: {p['status']} | "
+            f"Authority: {auth_str} | Reach: {reach_str} | PF Score: {pf_str}\n"
+            f"Patron reasoning: {p['score_reasoning'] or 'No reasoning recorded.'}"
+        )
+    else:
+        patron_block = "(no patron — autonomous or patron not set in registry)"
+
+    # Proxy network block
+    if proxy_actors:
+        proxy_lines = []
+        for px in proxy_actors:
+            pf_str = f"{px['pf_score']:.0f}" if px["pf_score"] is not None else "unscored"
+            proxy_lines.append(
+                f"- {px['name']} | Depth: {px['proxy_depth']} | Status: {px['status']} | PF: {pf_str}"
+            )
+        proxy_block = "\n".join(proxy_lines)
+    else:
+        proxy_block = "(no proxy actors found in registry)"
+
+    return (
+        f"ACTOR: {actor_name}\n"
+        f"TYPE: {actor_type}\n"
+        f"PROXY DEPTH: {proxy_depth}\n"
+        f"AUTHORITY BASELINE: {auth_baseline}\n"
+        f"REACH BASELINE: {reach_baseline}\n"
+        f"\n"
+        f"PATRON STATE CONTEXT:\n"
+        f"{patron_block}\n"
+        f"\n"
+        f"PROXY NETWORK (actors this entity sponsors):\n"
+        f"{proxy_block}\n"
+        f"\n"
+        f"LINKED EVENTS ({len(linked_events)}):\n"
+        f"{events_block}\n"
+        f"\n"
+        f"LINKED CASE STUDIES ({len(linked_case_studies)}):\n"
+        f"{cs_block}\n"
+        f"\n"
+        "Score this actor. The relationship context above is as important as the events. "
+        "A patron's collapse must propagate to the agent's Reach Score. "
+        "A proxy network's degradation must reduce the patron's Reach Score. "
+        "Return only the JSON object."
+    )
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -241,7 +330,6 @@ def _write_score_snapshot(
 
         today = datetime.date.today().isoformat()
         title = f"{actor_name} — PF {new_pf_score:.0f} ({today})"
-        trigger_notes = reasoning[:2000]
 
         url = "https://api.notion.com/v1/pages"
         headers = {
@@ -258,7 +346,7 @@ def _write_score_snapshot(
                 "Score Delta": {"number": round(delta, 1) if delta is not None else 0},
                 "Snapshot Type": {"select": {"name": "Event-Triggered"}},
                 "Snapshot Date": {"date": {"start": today}},
-                "Trigger Notes": {"rich_text": [{"text": {"content": trigger_notes}}]},
+                "Trigger Notes": {"rich_text": [{"text": {"content": reasoning[:2000]}}]},
                 "Agent Source": {"rich_text": [{"text": {"content": "Agent-S: Score"}}]},
                 "Visibility": {"select": {"name": "Internal"}},
             },
@@ -267,45 +355,6 @@ def _write_score_snapshot(
         response.raise_for_status()
     except Exception as exc:
         console.print(f"[yellow]Warning:[/yellow] Failed to write Score Snapshot for {actor_name}: {exc}")
-
-
-def _build_user_message(context: dict, auth_baseline: int, reach_baseline: int) -> str:
-    actor_name = context["name"]
-    actor_type = context["actor_type"]
-    linked_events: list[dict] = context["linked_events"]
-    linked_case_studies: list[dict] = context["linked_case_studies"]
-
-    events_lines = []
-    for ev in linked_events:
-        date_str = ev.get("date") or "unknown date"
-        ev_name = ev.get("event_name", "Unnamed event")
-        signal = ev.get("pf_signal", "")
-        desc = ev.get("description", "")
-        events_lines.append(f"- [{date_str}] {ev_name} | PF Signal: {signal} | {desc}")
-
-    cs_lines = []
-    for cs in linked_case_studies:
-        title = cs.get("title", "Untitled")
-        summary = cs.get("summary", "")
-        cs_lines.append(f"- {title}: {summary}")
-
-    events_block = "\n".join(events_lines) if events_lines else "(none)"
-    cs_block = "\n".join(cs_lines) if cs_lines else "(none)"
-
-    return (
-        f"ACTOR: {actor_name}\n"
-        f"TYPE: {actor_type}\n"
-        f"AUTHORITY BASELINE: {auth_baseline}\n"
-        f"REACH BASELINE: {reach_baseline}\n"
-        f"\n"
-        f"LINKED EVENTS ({len(linked_events)}):\n"
-        f"{events_block}\n"
-        f"\n"
-        f"LINKED CASE STUDIES ({len(linked_case_studies)}):\n"
-        f"{cs_block}\n"
-        f"\n"
-        "Score this actor. Apply the framework. Return only the JSON object."
-    )
 
 
 def _call_claude(client: anthropic.Anthropic, user_msg: str, strict: bool) -> str:

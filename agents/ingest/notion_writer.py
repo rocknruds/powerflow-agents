@@ -20,13 +20,104 @@ from config.settings import (
 
 console = Console()
 
+_NOTION_HEADERS = {
+    "Authorization": f"Bearer {NOTION_API_KEY}",
+    "Content-Type": "application/json",
+    "Notion-Version": "2022-06-28",
+}
+
+
+# ── Deduplication ─────────────────────────────────────────────────────────────
+
+def find_existing_source(url: str) -> tuple[str, str] | None:
+    """Check if a source with this URL already exists in the Sources database.
+
+    Returns (page_id, page_url) if found, None otherwise.
+    Only runs when a URL is present — text-only ingestions skip this.
+    """
+    if not url:
+        return None
+
+    query_url = f"https://api.notion.com/v1/databases/{NOTION_SOURCES_DB_ID}/query"
+    payload = {
+        "filter": {
+            "property": "URL",
+            "url": {"equals": url},
+        }
+    }
+
+    try:
+        response = requests.post(query_url, headers=_NOTION_HEADERS, json=payload, timeout=15)
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        if not results:
+            return None
+        page = results[0]
+        page_id = page["id"]
+        page_url = page.get("url", f"https://notion.so/{page_id.replace('-', '')}")
+        return page_id, page_url
+    except Exception:
+        return None
+
+
+def find_existing_event(event_name: str, event_date: str) -> tuple[str, str] | None:
+    """Check if an event with this name and date already exists in the Events database.
+
+    Matches on exact event name (title) — date is used as an additional filter
+    to avoid false positives on generically named events.
+    Returns (page_id, page_url) if found, None otherwise.
+    """
+    if not event_name:
+        return None
+
+    query_url = f"https://api.notion.com/v1/databases/{NOTION_EVENTS_DB_ID}/query"
+
+    # Filter by title text match; date filtering would require a compound filter
+    # which isn't reliable on the title property. We post-filter by date below.
+    payload = {
+        "filter": {
+            "property": "Event Name",
+            "title": {"equals": event_name},
+        }
+    }
+
+    try:
+        response = requests.post(query_url, headers=_NOTION_HEADERS, json=payload, timeout=15)
+        response.raise_for_status()
+        results = response.json().get("results", [])
+
+        for page in results:
+            props = page.get("properties", {})
+            date_prop = props.get("Date", {}).get("date") or {}
+            page_date = date_prop.get("start", "")
+            # Match on name alone if no date provided; match name+date if both present
+            if not event_date or not page_date or page_date == event_date:
+                page_id = page["id"]
+                page_url = page.get("url", f"https://notion.so/{page_id.replace('-', '')}")
+                return page_id, page_url
+
+        return None
+    except Exception:
+        return None
+
+
+# ── Writers ───────────────────────────────────────────────────────────────────
 
 def write_source(source: dict[str, Any]) -> tuple[str, str]:
-    """Create a Source record in Notion.
+    """Create a Source record in Notion, skipping if URL already exists.
 
     Returns (page_id, page_url).
     Raises RuntimeError on API failure.
     """
+    # Dedup check — only when a URL is present
+    url = source.get("url")
+    if url:
+        existing = find_existing_source(url)
+        if existing:
+            page_id, page_url = existing
+            console.print(f"[dim]Source already exists (URL match):[/dim] {url} — skipping")
+            return page_id, page_url
+
     client = _get_client()
 
     properties = {
@@ -37,7 +128,7 @@ def write_source(source: dict[str, Any]) -> tuple[str, str]:
         "Summary": _rich_text(source.get("summary", "")),
     }
 
-    if url := source.get("url"):
+    if url:
         properties["URL"] = {"url": url}
 
     if pub_date := source.get("publication_date"):
@@ -59,28 +150,34 @@ def write_source(source: dict[str, Any]) -> tuple[str, str]:
 
 
 def write_event(event: dict[str, Any], source_page_id: str) -> tuple[str, str]:
-    """Create an Event record in Notion, linked to the given Source page.
+    """Create an Event record in Notion, skipping if name+date already exists.
 
     Returns (page_id, page_url).
     Raises RuntimeError on API failure.
     """
+    event_name = event.get("event_name", "Untitled Event")
+    event_date = event.get("date", "")
+
+    # Dedup check
+    existing = find_existing_event(event_name, event_date)
+    if existing:
+        page_id, page_url = existing
+        console.print(
+            f"[dim]Event already exists (name+date match):[/dim] {event_name} ({event_date}) — skipping"
+        )
+        return page_id, page_url
+
     client = _get_client()
 
     properties = {
-        "Event Name": _title(event.get("event_name", "Untitled Event")),
+        "Event Name": _title(event_name),
         "Event Type": _select(event.get("event_type", "Other")),
         "Description": _rich_text(event.get("description", "")),
-        # NOTE: Notion property must be renamed from "Impact on Sovereignty Gap" to "PF Signal"
-        # in the Events Timeline database settings before this will write correctly.
-        "PF Signal": _select(
-            event.get("pf_signal", "Indirect")
-        ),
-        "Key Sources": {
-            "relation": [{"id": source_page_id}]
-        },
+        "PF Signal": _select(event.get("pf_signal", "Indirect")),
+        "Key Sources": {"relation": [{"id": source_page_id}]},
     }
 
-    if event_date := event.get("date"):
+    if event_date:
         properties["Date"] = _date(event_date)
 
     try:
@@ -173,10 +270,6 @@ def write_actors(
 ) -> list[tuple[str, str, str, bool]]:
     """Create or find Actor records in the Actors Registry, then link them to the Event page.
 
-    For each actor, checks if a page with the same name already exists in the Actors Registry.
-    Creates a new page only when no match is found. After processing all actors, updates the
-    Event page's Key Actors relation with all resolved page IDs.
-
     Returns a list of (page_id, page_url, actor_name, is_new) tuples.
     """
     client = _get_client()
@@ -213,15 +306,7 @@ def write_activity_log(
     status: str = "Completed",
     notes: str = "",
 ) -> tuple[str, str] | None:
-    """Write a record to the Agent Activity Log database after an ingestion run.
-
-    Logs ingestion metadata — title, score, verdict, actor count, databases touched,
-    and status (``"Completed"`` or ``"Rejected"``). Pass ``notes`` to capture error messages
-    on failure.
-
-    Returns ``(page_id, page_url)`` on success, or ``None`` on any failure.
-    Never raises — a logging failure must never crash an ingestion run.
-    """
+    """Write a record to the Agent Activity Log database. Never raises."""
     try:
         client = _get_client()
         now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
@@ -247,8 +332,6 @@ def write_activity_log(
         if notes:
             full_properties["Notes"] = _rich_text(notes)
 
-        # Minimal set of fields that are most likely to exist in any version of the schema.
-        # Used as a fallback if the full write is rejected due to unknown properties.
         core_properties: dict[str, Any] = {
             k: full_properties[k]
             for k in ("Log Title", "Timestamp", "Status")
@@ -263,7 +346,6 @@ def write_activity_log(
                 properties=full_properties,
             )
         except APIResponseError:
-            # Retry with only core fields if the schema doesn't support some properties.
             response = client.pages.create(
                 parent={"database_id": NOTION_ACTIVITY_LOG_DB_ID},
                 properties=core_properties,
@@ -279,32 +361,24 @@ def write_activity_log(
 
 
 def _find_actor_by_name(client: Client, name: str) -> tuple[str, str] | None:
-    """Search for an actor by name in the Actors Registry. Returns (page_id, page_url) or None."""
+    """Search for an actor by exact name in the Actors Registry."""
     url = f"https://api.notion.com/v1/databases/{NOTION_ACTORS_DB_ID}/query"
-    headers = {
-        "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-    }
     payload = {
         "filter": {
             "property": "Name",
-            "title": {
-                "equals": name
-            }
+            "title": {"equals": name},
         }
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.post(url, headers=_NOTION_HEADERS, json=payload, timeout=30)
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
         raise RuntimeError(
             f"Notion API error querying Actors Registry for '{name}': {exc}"
         ) from exc
 
-    data = response.json()
-    results = data.get("results", [])
+    results = response.json().get("results", [])
     if not results:
         return None
 
@@ -315,7 +389,7 @@ def _find_actor_by_name(client: Client, name: str) -> tuple[str, str] | None:
 
 
 def _create_actor(client: Client, actor: dict[str, Any]) -> tuple[str, str]:
-    """Create a new page in the Actors Registry. Returns (page_id, page_url)."""
+    """Create a new page in the Actors Registry."""
     name = actor.get("name", "Unknown Actor")
     raw_actor_type = actor.get("actor_type", "Non-State")
     notion_actor_type = ACTOR_TYPE_NOTION_MAP.get(raw_actor_type, raw_actor_type)
@@ -326,13 +400,15 @@ def _create_actor(client: Client, actor: dict[str, Any]) -> tuple[str, str]:
         "Name": _title(name),
         "Actor Type": _select(notion_actor_type),
         "Notes": _rich_text(role_in_event),
+        "Status": _select("Active"),
+        "Visibility": _select("Internal"),
     }
     if iso3:
         properties["ISO3 / Identifier"] = _rich_text(iso3)
 
     pf_score_properties = {
-        "Authority Score": {"number": None},  # 0-100, populated by PF Score Agent
-        "Reach Score": {"number": None},       # 0-100, populated by PF Score Agent
+        "Authority Score": {"number": None},
+        "Reach Score": {"number": None},
     }
 
     try:
@@ -342,8 +418,8 @@ def _create_actor(client: Client, actor: dict[str, Any]) -> tuple[str, str]:
         )
     except APIResponseError:
         console.print(
-            f"[yellow]Warning:[/yellow] Could not write Authority Score / Reach Score for "
-            f"'{name}' — schema fields may not exist yet. Retrying without PF Score fields."
+            f"[yellow]Warning:[/yellow] Could not write PF Score fields for "
+            f"'{name}' — retrying without them."
         )
         try:
             response = client.pages.create(
@@ -390,7 +466,6 @@ def _title(text: str) -> dict:
 
 
 def _rich_text(text: str) -> dict:
-    # Notion rich_text blocks have a 2000-char limit per element
     chunks = [text[i:i + 2000] for i in range(0, max(len(text), 1), 2000)]
     return {"rich_text": [{"text": {"content": chunk}} for chunk in chunks]}
 

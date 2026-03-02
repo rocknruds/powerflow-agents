@@ -16,24 +16,31 @@ def _get_client() -> Client:
 
 
 def fetch_actor_context(actor_page_id: str) -> dict:
-    """Fetch actor name, type, linked events, and linked case studies from Notion.
+    """Fetch actor name, type, linked events, case studies, and relationship context from Notion.
 
     Returns:
         {
             "name": str,
-            "actor_type": str,          # "State" | "Non-State" | "Hybrid" | "IGO" | "Individual"
-            "linked_events": [
+            "actor_type": str,
+            "proxy_depth": str,           # "Patron" | "Principal" | "Agent" | "Autonomous" | "None"
+            "linked_events": [...],
+            "linked_case_studies": [...],
+            "patron_context": {           # None if no patron relation set
+                "name": str,
+                "authority_score": float | None,
+                "reach_score": float | None,
+                "pf_score": float | None,
+                "status": str,
+                "score_reasoning": str,
+            } | None,
+            "proxy_actors": [             # actors that list this actor as their patron
                 {
-                    "event_name": str,
-                    "date": str,         # ISO date string or "" if missing
-                    "pf_signal": str,    # "Widens" | "Narrows" | "No clear effect" | "Indirect"
-                    "description": str
-                }
-            ],
-            "linked_case_studies": [
-                {
-                    "title": str,
-                    "summary": str       # empty string if not available
+                    "name": str,
+                    "authority_score": float | None,
+                    "reach_score": float | None,
+                    "pf_score": float | None,
+                    "proxy_depth": str,
+                    "status": str,
                 }
             ]
         }
@@ -54,18 +61,108 @@ def fetch_actor_context(actor_page_id: str) -> dict:
     name = _extract_title(props.get("Name", {}))
 
     actor_type_prop = props.get("Actor Type", {})
-    select_obj = actor_type_prop.get("select") or {}
-    actor_type = select_obj.get("name", "Non-State")
+    actor_type = (actor_type_prop.get("select") or {}).get("name", "Non-State")
+
+    proxy_depth_prop = props.get("Proxy Depth", {})
+    proxy_depth = (proxy_depth_prop.get("select") or {}).get("name", "None")
 
     linked_events = _fetch_linked_events(client, actor_page_id)
     linked_case_studies = _fetch_linked_case_studies(client, props)
+    patron_context = _fetch_patron_context(client, props)
+    proxy_actors = _fetch_proxy_actors(actor_page_id)
 
     return {
         "name": name,
         "actor_type": actor_type,
+        "proxy_depth": proxy_depth,
         "linked_events": linked_events,
         "linked_case_studies": linked_case_studies,
+        "patron_context": patron_context,
+        "proxy_actors": proxy_actors,
     }
+
+
+def _fetch_patron_context(client: Client, actor_props: dict) -> dict | None:
+    """Fetch the patron state's current scores and status via the Patron State relation.
+
+    Returns a dict with the patron's name, scores, and reasoning, or None if no patron is set.
+    """
+    patron_prop = actor_props.get("Patron State", {})
+    relation_items = patron_prop.get("relation", [])
+    if not relation_items:
+        return None
+
+    patron_page_id = relation_items[0].get("id", "")
+    if not patron_page_id:
+        return None
+
+    try:
+        page = client.pages.retrieve(page_id=patron_page_id)
+    except APIResponseError:
+        return None
+
+    props = page.get("properties", {})
+    name = _extract_title(props.get("Name", {}))
+    authority = props.get("Authority Score", {}).get("number")
+    reach = props.get("Reach Score", {}).get("number")
+    pf_score = (authority * 0.6 + reach * 0.4) if (authority is not None and reach is not None) else None
+    status = (props.get("Status", {}).get("select") or {}).get("name", "")
+    reasoning = _extract_text(props.get("Score Reasoning", {}))
+
+    return {
+        "name": name,
+        "authority_score": authority,
+        "reach_score": reach,
+        "pf_score": pf_score,
+        "status": status,
+        "score_reasoning": reasoning,
+    }
+
+
+def _fetch_proxy_actors(actor_page_id: str) -> list[dict]:
+    """Find all actors in the registry that list this actor as their Patron State.
+
+    This surfaces the actors this entity sponsors, so the score agent can reason
+    about the burden and reach amplification of managing a proxy network.
+    """
+    url = f"https://api.notion.com/v1/databases/{NOTION_ACTORS_DB_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_KEY}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+    }
+    payload = {
+        "filter": {
+            "property": "Patron State",
+            "relation": {"contains": actor_page_id},
+        }
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        response.raise_for_status()
+    except requests.exceptions.RequestException:
+        return []
+
+    proxies = []
+    for page in response.json().get("results", []):
+        props = page.get("properties", {})
+        name = _extract_title(props.get("Name", {}))
+        authority = props.get("Authority Score", {}).get("number")
+        reach = props.get("Reach Score", {}).get("number")
+        pf_score = (authority * 0.6 + reach * 0.4) if (authority is not None and reach is not None) else None
+        proxy_depth = (props.get("Proxy Depth", {}).get("select") or {}).get("name", "")
+        status = (props.get("Status", {}).get("select") or {}).get("name", "")
+        proxies.append({
+            "name": name,
+            "authority_score": authority,
+            "reach_score": reach,
+            "pf_score": pf_score,
+            "proxy_depth": proxy_depth,
+            "status": status,
+        })
+
+    return proxies
 
 
 def _fetch_linked_events(client: Client, actor_page_id: str) -> list[dict]:
@@ -105,10 +202,7 @@ def _fetch_linked_events(client: Client, actor_page_id: str) -> list[dict]:
 
 
 def _fetch_linked_case_studies(client: Client, actor_props: dict) -> list[dict]:
-    """Fetch case studies linked from the actor page via a 'Case Studies' relation.
-
-    Returns an empty list if the relation property doesn't exist or is empty.
-    """
+    """Fetch case studies linked from the actor page via a 'Case Studies' relation."""
     case_studies_prop = actor_props.get("Case Studies", {})
     relation_items = case_studies_prop.get("relation", [])
     if not relation_items:
@@ -122,7 +216,6 @@ def _fetch_linked_case_studies(client: Client, actor_props: dict) -> list[dict]:
         try:
             page = client.pages.retrieve(page_id=page_id)
             cs_props = page.get("properties", {})
-            # Try both "Title" and "Name" as the title property
             title = _extract_title(cs_props.get("Title", {})) or _extract_title(cs_props.get("Name", {}))
             summary = _extract_rich_text(cs_props.get("Summary", {}))
             case_studies.append({"title": title, "summary": summary})
@@ -142,6 +235,13 @@ def _extract_title(prop: dict) -> str:
 def _extract_rich_text(prop: dict) -> str:
     items = prop.get("rich_text", [])
     return "".join(item.get("plain_text", "") for item in items)
+
+
+def _extract_text(prop: dict) -> str:
+    """Extract from either rich_text or plain text property."""
+    if "rich_text" in prop:
+        return _extract_rich_text(prop)
+    return prop.get("text", {}).get("content", "") if isinstance(prop.get("text"), dict) else ""
 
 
 def _extract_select(prop: dict) -> str:

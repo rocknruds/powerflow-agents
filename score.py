@@ -4,10 +4,7 @@ from agents.score.score_agent import score_actors
 # Pakistan and Taliban page IDs from our earlier ingestion
 # Pull these from your Actors Registry in Notion — just grab the page IDs from the URLs
 actor_ids = [
-    "314f8ae9-4162-811f-b20f-eb10c0e9ac46",  # Pakistan
-    "314f8ae9-4162-8166-85ef-d627aa0e6bc0",  # Islamic Emirate of Afghanistan (Taliban)
-    "314f8ae9-4162-8198-b844-d843e710d5c3",  # Tehreek-e-Taliban Pakistan (TTP)
-    "312f8ae9-4162-8135-ac0c-d2cc89635291",  # Pakistan — ISI
+    "312f8ae9-4162-8114-9ecb-f5ac14c983dc"
 ]
 results = score_actors(actor_ids)
 for r in results:
