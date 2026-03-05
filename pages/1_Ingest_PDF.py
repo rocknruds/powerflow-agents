@@ -250,16 +250,17 @@ if run_clicked:
                 actor_results = notion_writer.write_actors(
                     data.get("actors", []), event_page_id
                 )
+                registry_results = [r for r in actor_results if r[4]]
 
                 from agents.ingest.conflict_matcher import run_conflict_matching
                 run_conflict_matching(event_page_id, event_data, data.get("actors", []))
 
-                # Score actors after ingestion
+                # Score actors after ingestion (registry only; individuals excluded)
                 from agents.score.score_agent import score_actors
-                actor_ids = [pid for pid, _, _, _ in actor_results]
+                actor_ids = [r[0] for r in registry_results]
                 score_results = score_actors(actor_ids) if actor_ids else []
 
-                actor_names = ", ".join(name for _, _, name, _ in actor_results)
+                actor_names = ", ".join(r[2] for r in actor_results)
                 scored_count = sum(1 for r in score_results if r.get("success"))
                 notion_writer.write_activity_log(
                     article_title=source_data.get("title", "Untitled"),
@@ -268,7 +269,7 @@ if run_clicked:
                     databases_written=["Sources", "Events Timeline", "Intelligence Feeds", "Actors Registry"],
                     actor_count=len(actor_results),
                     status="Completed",
-                    notes=f"Actors: {actor_names} | Scored: {scored_count}/{len(actor_results)}",
+                    notes=f"Actors: {actor_names} | Scored: {scored_count}/{len(registry_results)}",
                 )
 
                 st.session_state["ingestion_status"] = {
@@ -293,10 +294,10 @@ if status := st.session_state.get("ingestion_status"):
         st.markdown(f"**Event:** [{status['event_url']}]({status['event_url']})")
         st.markdown(f"**Intel Feed:** [{status['intel_url']}]({status['intel_url']})")
 
-        actor_results: list[tuple[str, str, str, bool]] = status.get("actors", [])
+        actor_results: list[tuple[str, str, str, bool, bool]] = status.get("actors", [])
         if actor_results:
             st.markdown("**Actors:**")
-            for _page_id, page_url, actor_name, is_new in actor_results:
+            for _page_id, page_url, actor_name, is_new, _ in actor_results:
                 label = "new" if is_new else "existing"
                 st.markdown(f"- [{actor_name}]({page_url}) `({label})`")
         else:

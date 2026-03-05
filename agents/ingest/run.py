@@ -149,7 +149,8 @@ def main() -> None:
     except RuntimeError as exc:
         console.print(f"\n[bold red]Notion write failed (Actors):[/bold red] {exc}")
         sys.exit(1)
-    for _pid, actor_url, actor_name, is_new in actor_results:
+    registry_results = [r for r in actor_results if r[4]]
+    for _pid, actor_url, actor_name, is_new, _from_registry in actor_results:
         label = "new" if is_new else "existing"
         console.print(f"[green]✓[/green] {actor_name} ({label}): {actor_url}")
 
@@ -160,11 +161,11 @@ def main() -> None:
 
     # ── 8b. Score Actors ──────────────────────────────────────────────────────
     score_results: list[dict] = []
-    if actor_results:
+    if registry_results:
         console.print("\n[bold cyan]Scoring actors...[/bold cyan]")
         try:
             from agents.score.score_agent import score_actors
-            actor_ids = [page_id for page_id, _, _, _ in actor_results]
+            actor_ids = [r[0] for r in registry_results]
             score_results = score_actors(actor_ids)
             for r in score_results:
                 if r["success"]:
@@ -184,9 +185,9 @@ def main() -> None:
 
     # ── 9. Write Activity Log ─────────────────────────────────────────────────
     console.print("\n[bold cyan]Writing Activity Log entry...[/bold cyan]")
-    actor_names = ", ".join(name for _, _, name, _ in actor_results)
+    actor_names = ", ".join(r[2] for r in actor_results)
     scored_count = sum(1 for r in score_results if r.get("success"))
-    log_notes = f"Actors: {actor_names} | Scored: {scored_count}/{len(actor_results)}"
+    log_notes = f"Actors: {actor_names} | Scored: {scored_count}/{len(registry_results)}"
     log_result = notion_writer.write_activity_log(
         article_title=source_data.get("title", "Untitled"),
         databases_written=[

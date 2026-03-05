@@ -14,6 +14,7 @@ from config.settings import (
     NOTION_ACTORS_DB_ID,
     NOTION_API_KEY,
     NOTION_EVENTS_DB_ID,
+    NOTION_INDIVIDUALS_DB_ID,
     NOTION_INTEL_FEEDS_DB_ID,
     NOTION_SOURCES_DB_ID,
 )
@@ -267,32 +268,44 @@ def write_intel_feed(
 
 def write_actors(
     actors: list[dict[str, Any]], event_page_id: str
-) -> list[tuple[str, str, str, bool]]:
-    """Create or find Actor records in the Actors Registry, then link them to the Event page.
+) -> list[tuple[str, str, str, bool, bool]]:
+    """Create or find Actor records; Individuals go to Influential Individuals DB, others to Actors Registry.
 
-    Returns a list of (page_id, page_url, actor_name, is_new) tuples.
+    Individuals are not linked to the event. Returns a list of
+    (page_id, page_url, actor_name, is_new, from_registry) tuples.
     """
     client = _get_client()
-    results: list[tuple[str, str, str, bool]] = []
+    results: list[tuple[str, str, str, bool, bool]] = []
+    registry_page_ids: list[str] = []
 
     for actor in actors:
         name: str = actor.get("name", "").strip()
         if not name:
             continue
 
+        if actor.get("actor_type") == "Individual":
+            page_id, page_url, is_new = _write_individual(client, actor)
+            results.append((page_id, page_url, name, is_new, False))
+            if is_new:
+                console.print(f"[green]Individual created:[/green] {name}")
+            else:
+                console.print(f"[dim]Individual already exists:[/dim] {name} — skipping")
+            continue
+
         existing = _find_actor_by_name(client, name)
         if existing:
             page_id, page_url = existing
             console.print(f"[dim]Actor already exists:[/dim] {name} — skipping")
-            results.append((page_id, page_url, name, False))
+            results.append((page_id, page_url, name, False, True))
+            registry_page_ids.append(page_id)
         else:
             page_id, page_url = _create_actor(client, actor)
             console.print(f"[green]Actor created:[/green] {name}")
-            results.append((page_id, page_url, name, True))
+            results.append((page_id, page_url, name, True, True))
+            registry_page_ids.append(page_id)
 
-    if results:
-        actor_ids = [page_id for page_id, _, _, _ in results]
-        _link_actors_to_event(client, event_page_id, actor_ids)
+    if registry_page_ids:
+        _link_actors_to_event(client, event_page_id, registry_page_ids)
 
     return results
 
@@ -386,6 +399,73 @@ def _find_actor_by_name(client: Client, name: str) -> tuple[str, str] | None:
     page_id = page["id"]
     page_url = page.get("url", f"https://notion.so/{page_id.replace('-', '')}")
     return page_id, page_url
+
+
+def _find_individual_by_name(client: Client, name: str) -> tuple[str, str] | None:
+    """Search for an individual by exact name in the Influential Individuals database."""
+    url = f"https://api.notion.com/v1/databases/{NOTION_INDIVIDUALS_DB_ID}/query"
+    payload = {
+        "filter": {
+            "property": "Name",
+            "title": {"equals": name},
+        }
+    }
+
+    try:
+        response = requests.post(url, headers=_NOTION_HEADERS, json=payload, timeout=30)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as exc:
+        raise RuntimeError(
+            f"Notion API error querying Influential Individuals for '{name}': {exc}"
+        ) from exc
+
+    results = response.json().get("results", [])
+    if not results:
+        return None
+
+    page = results[0]
+    page_id = page["id"]
+    page_url = page.get("url", f"https://notion.so/{page_id.replace('-', '')}")
+    return page_id, page_url
+
+
+def _create_individual(client: Client, actor: dict[str, Any]) -> tuple[str, str]:
+    """Create a new page in the Influential Individuals database."""
+    name = actor.get("name", "Unknown")
+    properties: dict[str, Any] = {
+        "Name": _title(name),
+        "Role": _rich_text(actor.get("role_in_event", "")),
+        "Status": _select("Active"),
+        "Visibility": _select("Internal"),
+        "Agent Source": _rich_text("Ingestion Agent"),
+    }
+
+    try:
+        response = client.pages.create(
+            parent={"database_id": NOTION_INDIVIDUALS_DB_ID},
+            properties=properties,
+        )
+    except APIResponseError as exc:
+        raise RuntimeError(
+            f"Notion API error creating Individual '{name}': {exc.status} — {exc.body}"
+        ) from exc
+
+    page_id = response["id"]
+    page_url = response.get("url", f"https://notion.so/{page_id.replace('-', '')}")
+    return page_id, page_url
+
+
+def _write_individual(
+    client: Client, actor: dict[str, Any]
+) -> tuple[str, str, bool]:
+    """Dedup by name, then create Individual in Influential Individuals DB. Returns (page_id, page_url, is_new)."""
+    name = actor.get("name", "").strip() or "Unknown"
+    existing = _find_individual_by_name(client, name)
+    if existing:
+        page_id, page_url = existing
+        return page_id, page_url, False
+    page_id, page_url = _create_individual(client, actor)
+    return page_id, page_url, True
 
 
 def _create_actor(client: Client, actor: dict[str, Any]) -> tuple[str, str]:
