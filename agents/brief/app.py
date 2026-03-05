@@ -14,6 +14,8 @@ import datetime
 import sys
 from pathlib import Path
 
+_EST = datetime.timezone(datetime.timedelta(hours=-5))
+
 # Ensure the repo root is on the path so config.settings resolves correctly
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
@@ -241,7 +243,7 @@ if st.session_state.brief_text:
 
     if approve_btn:
         # Calculate date_range_start for the Notion property
-        start_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        start_dt = datetime.datetime.now(_EST) - datetime.timedelta(
             days=int(lookback)
         )
         date_range_start = start_dt.date().isoformat()

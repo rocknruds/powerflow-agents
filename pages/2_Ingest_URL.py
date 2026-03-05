@@ -72,6 +72,7 @@ if fetch_clicked and url_input.strip():
                 "source": source_data,
                 "event": data["event"],
                 "actors": data.get("actors", []),
+                "intel_feed": data.get("intel_feed", {}),
             }
         except RuntimeError as exc:
             st.error(
@@ -90,6 +91,7 @@ if extraction:
     source = extraction["source"]
     event = extraction["event"]
     actors = extraction["actors"]
+    intel_feed = extraction.get("intel_feed", {})
 
     with st.expander("📰 Source", expanded=True):
         col_a, col_b = st.columns(2)
@@ -145,13 +147,20 @@ if extraction:
                     event, source_page_id
                 )
                 intel_page_id, intel_page_url = notion_writer.write_intel_feed(
-                    source, event, screen_result_stub
+                    source, event, screen_result_stub, intel_feed
                 )
                 actor_results = notion_writer.write_actors(actors, event_page_id)
                 registry_results = [r for r in actor_results if r[4]]
 
                 from agents.ingest.conflict_matcher import run_conflict_matching
                 run_conflict_matching(event_page_id, event, actors)
+
+                notion_writer.patch_intel_feed(
+                    intel_page_id=intel_page_id,
+                    actor_page_ids=[r[0] for r in actor_results],
+                    source_page_id=source_page_id,
+                    event_page_id=event_page_id,
+                )
 
                 actor_ids = [r[0] for r in registry_results]
                 score_results = score_actors(actor_ids) if actor_ids else []

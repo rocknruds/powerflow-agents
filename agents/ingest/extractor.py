@@ -69,68 +69,92 @@ def normalize_actor_name(name: str) -> str:
 
 
 _SYSTEM_PROMPT = """\
-You are a geopolitical intelligence analyst working within the PowerFlow system. \
-PowerFlow is a geopolitical intelligence system that scores how power actually moves \
-through the world. Every actor — state, armed group, or institution — has a PowerFlow \
-Score (PF Score) reflecting their real-world control and influence, not their nominal \
-or claimed authority. Your job is to extract structured intelligence that helps update \
-those scores.
+You are a geopolitical intelligence analyst working within the PowerFlow system.
+PowerFlow scores how power actually moves through the world — measuring real-world
+control and influence, not nominal or claimed authority. Your job is to extract
+structured intelligence that helps update those scores.
 
-Your task is to extract structured intelligence from the provided article or text. \
+Your task is to extract structured intelligence from the provided article or text.
 Return ONLY a valid JSON object with no additional text, commentary, or markdown.
 
 Extraction rules:
 - Be precise and analytical, not journalistic
-- Event names should be concise and descriptive \
-(e.g. "Russia Suspends New START Treaty Participation" not "Russia and US nuclear treaty")
+- Event names should be concise and descriptive
+  (e.g. "Russia Suspends New START Treaty Participation" not "Russia and US nuclear treaty")
 - Descriptions should focus on structural power implications, not just what happened
-- PF Signal must reflect whether this event strengthens or weakens an actor's real-world \
-control and influence (their PF Score). "Widens" = actor loses effective control or \
-influence. "Narrows" = actor consolidates control or gains influence. Use "Indirect" \
-when impact is real but mediated through other actors.
+- PF Signal must reflect the net direction of power gap movement across this event.
+  Choose the single best option:
+    "Widening" — event expands the gap between claimed and exercised power for a key actor
+                 (actor loses effective control or influence)
+    "Narrowing" — event reduces that gap (actor consolidates control or gains influence)
+    "Mixed"    — different actors move in opposite directions within the same event
+    "Stable"   — no meaningful score movement expected; event is noise not signal
+    "Unclear"  — LAST RESORT ONLY. Use only when the article genuinely provides
+                 insufficient information to make any assessment. Do not default here;
+                 if you can reason about power implications at all, choose one of the above.
 - If the date is unclear, use the article publication date
-- Reliability: High = established outlet or primary source, \
-Medium = secondary reporting, Low = unverified or opinion
+- Reliability: High = established outlet or primary source,
+  Medium = secondary reporting, Low = unverified or opinion
 - Source Type: classify based on the publishing organization
 
 Return this exact JSON structure:
 {
   "source": {
     "title": "string",
-    "author_organization": "string",
+    "author_organization": "string — the publishing organization (e.g. 'New York Times', 'WSJ', 'CSIS'). Return the publication name, NOT the individual journalist's byline.",
     "publication_date": "YYYY-MM-DD",
     "source_type": "Academic | Government | News | Think tank | OSINT | Legal document | Other",
     "reliability": "High | Medium | Low",
-    "summary": "string (2-3 sentences)"
+    "summary": "string (2-3 sentences — capture the author's core analytical argument, not just the topic)"
   },
   "event": {
     "event_name": "string",
     "date": "YYYY-MM-DD",
     "event_type": "Legal change | Military or coercive action | Sanctions or economic measure | Institutional reform | Alliance or treaty shift | Information-cyber | Other",
     "description": "string (3-5 sentences, analytically focused on power implications)",
-    "pf_signal": "Widens | Narrows | No clear effect | Indirect"
+    "pf_signal": "Widening | Narrowing | Mixed | Stable | Unclear",
+    "mechanism": "string (1-2 sentences — the specific causal pathway through which this event affects real-world control or influence. Not what happened — WHY and HOW it changes power. Example: 'Destruction of IRGC command infrastructure severs Iran's proxy coordination network, removing the financial and logistics pipelines that enabled cross-theater reach projection.')",
+    "trajectory": "string (1-2 sentences — is this a structural shift or a cyclical/temporary disruption? What is the realistic recovery pathway and timeframe? Example: 'Structural degradation — IRGC reconstitution historically requires 5-10 years; proxy realignment contingent on successor patron emergence with no clear precedent in this theater.')"
   },
   "actors": [
     {
       "name": "string — canonical name of the actor",
       "actor_type": "State | Non-State | Hybrid | IGO | Individual",
-      "sub_type": "string — for Individual actors: always set to 'Influential Figure'. For all other actor types: null",
-      "role_in_event": "string — one sentence describing what this actor did in the article",
+      "sub_type": "string — for Individual actors: always 'Influential Figure'. For all others: null",
+      "region": "string — infer from the actor's primary geography. Use one of: Middle East, Russia-FSU, Europe, South Asia, East Asia, Sub-Saharan Africa, North Africa, Latin America, Global",
+      "capabilities": ["array — select ALL applicable from: Conventional Military, Asymmetric / Guerrilla, Nuclear, Cyber, Economic Leverage, Intelligence Networks, Proxy Sponsorship, Information Warfare, Territorial Control, Legal / Diplomatic. Infer from context — prefer an imperfect populated list over an empty one."],
+      "pf_vector": "string — the actor's primary power vector in this event. Choose one: From Below (Challenger) | From Above (External Pressure) | From Within (Parallel Governance) | Defender | Neutral. Infer from role in event.",
+      "proxy_depth": "string — this actor's position in proxy/patron hierarchies. Choose one: Patron | Principal | Agent | Autonomous | None. Use 'None' for fully independent sovereign actors with no proxy relationship in this event.",
+      "role_in_event": "string — one sentence on what this actor did or experienced",
+      "pf_implication": "string — one sentence on what this event means for this actor's power trajectory going forward, not what happened",
+      "analytical_notes": "string — for Individual actors only: factual background on this person — their history, key relationships, and organizational role. Separate from analytical interpretation. Null for non-individual actors.",
+      "pf_relevance": "string — for Individual actors only: why this person is relevant to PowerFlow's world model and how they affect power dynamics. Null for non-individual actors.",
       "iso3": "string — ISO 3166-1 alpha-3 country code if applicable, else null"
     }
-  ]
+  ],
+  "intel_feed": {
+    "so_what_summary": "string (2-3 sentences — analytical summary of what this document means for PowerFlow's world model: what changed, for which actors, and what it implies. This is NOT a description of the document. Write it as a finished analytical statement, e.g. 'Russia's suspension of New START removes the last bilateral arms-control mechanism, freeing Moscow to expand its tactical nuclear posture without transparency obligations. This shifts the strategic calculus for NATO's eastern flank states, accelerating their push for Article 5 tripwire deployments. The gap between Russia's claimed compliance posture and its actual force posture is now unverifiable, widening PF scores across the Russia-NATO axis.')",
+    "mechanism": "string (1-2 sentences — same causal argument as event.mechanism but written for the Intel Feed analytical layer)",
+    "trajectory": "string (1-2 sentences — same durability claim as event.trajectory but from the Intel Feed perspective)",
+    "cascade_effects": "string (2-4 sentences — the multi-hop downstream chain this event sets in motion across actors and regions. Trace the second and third-order effects. Example: 'IRGC collapse removes the coordination backbone for Houthi operations, likely degrading Red Sea interdiction tempo within 60-90 days. Normalized shipping lanes reduce Gulf insurance premiums, easing Turkey's export corridor economics and reducing pressure on Erdogan to seek alternative trade routes. Qatar's regional mediation leverage increases as Iran's axis fractures and Gulf states seek a new broker.')"
+  }
 }
 
 Actor extraction rules:
-- Extract only actors that exercise independent decision-making authority relevant to the PF Score of this event
-- INCLUDE: sovereign states, non-state armed groups, international organizations, and individuals who are heads of state/government or who are the primary named decision-maker driving the event
-- DO NOT extract: military commands (e.g. CENTCOM, AFRICOM, Pacific Command), government departments or agencies (e.g. Pentagon, State Department, Treasury, IRGC Quds Force as a sub-unit of IRGC), legislative bodies (Congress, Parliament, Knesset), or military advisory bodies (Joint Chiefs of Staff, General Staff) — these are sub-units of the parent state actor and should not be created as separate actors
-- DO NOT extract generic references such as 'the public', 'citizens', 'local population', or unnamed officials
-- For individuals: only extract if they are a head of state/government (president, prime minister, supreme leader) OR if they are the single named central decision-maker in the event with no parent state actor already covering their role. Set sub_type to "Influential Figure" for all individuals.
-- If both a state and its head of state appear, include both — the individual adds analytical resolution beyond the state record
+- Extract only actors that exercise independent decision-making authority relevant to this event
+- INCLUDE: sovereign states, non-state armed groups, international organizations, heads of state/government, or the primary named decision-maker driving the event
+- DO NOT extract: military commands (CENTCOM, AFRICOM), government departments (Pentagon, State Dept, Treasury), legislative bodies (Congress, Knesset), or advisory bodies (Joint Chiefs) — these are sub-units of the parent state actor
+- DO NOT extract generic references like 'the public', 'citizens', or unnamed officials
+- For individuals: only extract heads of state/government OR the single named central decision-maker with no parent state actor already covering their role
+- If both a state and its head of state appear, include both
 - Aim for 2-5 actors per article
-- Use the canonical, full name for each actor (e.g. "United States" not "US", "Wagner Group" not "Wagner")
-- iso3 should be the ISO 3166-1 alpha-3 code of the actor's primary country (e.g. "USA", "RUS"), or null if not applicable
+- iso3: ISO 3166-1 alpha-3 of the actor's primary country, or null
+- capabilities: always populate this array. Infer from the actor's known role, type, and behavior in the article. An imperfect inference flagged for human review is better than an empty array.
+- pf_vector and proxy_depth: always populate. Use context and actor type to infer reasonable values.
+
+Source quality guidance:
+- For think tank and academic sources: summary should capture the author's core analytical claim and evidence base, not just the topic
+- For longform journalism: surface the structural observation buried in the piece, not the lede
 """
 
 _STRICT_SUFFIX = (
@@ -202,6 +226,7 @@ def _validate_and_coerce(data: dict[str, Any]) -> dict[str, Any]:
     source = data.get("source", {})
     event = data.get("event", {})
     actors: list[dict[str, Any]] = data.get("actors", [])
+    intel_feed: dict[str, Any] = data.get("intel_feed", {})
 
     source["source_type"] = _coerce(
         source.get("source_type", ""), VALID_SOURCE_TYPES, "source.source_type"
@@ -216,7 +241,19 @@ def _validate_and_coerce(data: dict[str, Any]) -> dict[str, Any]:
         event.get("pf_signal", ""),
         VALID_PF_SIGNAL_IMPACTS,
         "event.pf_signal",
+        default="Unclear",
     )
+
+    valid_capabilities = {
+        "Conventional Military", "Asymmetric / Guerrilla", "Nuclear", "Cyber",
+        "Economic Leverage", "Intelligence Networks", "Proxy Sponsorship",
+        "Information Warfare", "Territorial Control", "Legal / Diplomatic",
+    }
+    valid_pf_vectors = {
+        "From Below (Challenger)", "From Above (External Pressure)",
+        "From Within (Parallel Governance)", "Defender", "Neutral",
+    }
+    valid_proxy_depths = {"Patron", "Principal", "Agent", "Autonomous", "None"}
 
     validated_actors: list[dict[str, Any]] = []
     for actor in actors:
@@ -234,9 +271,32 @@ def _validate_and_coerce(data: dict[str, Any]) -> dict[str, Any]:
         actor["iso3"] = iso3 if isinstance(iso3, str) and iso3.strip() else None
         sub_type = actor.get("sub_type")
         actor["sub_type"] = sub_type if isinstance(sub_type, str) and sub_type.strip() else None
+        pf_implication = actor.get("pf_implication")
+        actor["pf_implication"] = pf_implication if isinstance(pf_implication, str) and pf_implication.strip() else None
+        region = actor.get("region")
+        actor["region"] = region if isinstance(region, str) and region.strip() else None
+        # Filter capabilities to only valid options
+        raw_caps = actor.get("capabilities")
+        if isinstance(raw_caps, list):
+            actor["capabilities"] = [c for c in raw_caps if c in valid_capabilities]
+        else:
+            actor["capabilities"] = []
+        # Coerce pf_vector and proxy_depth
+        actor["pf_vector"] = _coerce(
+            actor.get("pf_vector", "") or "",
+            valid_pf_vectors,
+            f"actors[{actor.get('name', '?')}].pf_vector",
+            default="Neutral",
+        )
+        actor["proxy_depth"] = _coerce(
+            actor.get("proxy_depth", "") or "",
+            valid_proxy_depths,
+            f"actors[{actor.get('name', '?')}].proxy_depth",
+            default="None",
+        )
         validated_actors.append(actor)
 
-    return {"source": source, "event": event, "actors": validated_actors}
+    return {"source": source, "event": event, "actors": validated_actors, "intel_feed": intel_feed}
 
 
 def _coerce(value: str, valid_set: set[str], field_name: str, default: str = "Other") -> str:

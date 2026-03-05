@@ -23,7 +23,7 @@ NOTION_SCORE_SNAPSHOTS_DB_ID = os.environ.get(
 )
 
 # Claude model settings
-CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+CLAUDE_MODEL = "claude-sonnet-4-6"
 CLAUDE_MAX_TOKENS = 2048
 
 # Score Agent settings
@@ -53,13 +53,18 @@ VALID_EVENT_TYPES = {
     "Other",
 }
 
-# PF Signal: does this event widen or narrow the gap between an actor's claimed
-# authority and actual control (i.e. does it hurt or help their Authority Score)?
+# PF Signal: direction of power gap movement — use Notion-native select values directly.
+# Widening = actor loses effective control/influence (gap expands)
+# Narrowing = actor consolidates control/gains influence (gap shrinks)
+# Mixed     = different actors move in opposite directions within the same event
+# Stable    = no meaningful score movement expected
+# Unclear   = genuinely insufficient information (last resort only)
 VALID_PF_SIGNAL_IMPACTS = {
-    "Widens",
-    "Narrows",
-    "No clear effect",
-    "Indirect",
+    "Widening",
+    "Narrowing",
+    "Mixed",
+    "Stable",
+    "Unclear",
 }
 
 VALID_ACTOR_TYPES = {

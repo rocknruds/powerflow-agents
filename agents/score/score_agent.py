@@ -12,6 +12,8 @@ import json
 import re
 
 import anthropic
+
+_EST = datetime.timezone(datetime.timedelta(hours=-5))
 import requests
 from notion_client import Client
 from notion_client.errors import APIResponseError
@@ -458,7 +460,7 @@ def _write_score_snapshot(
         if delta == 0.0:
             return
 
-        today = datetime.date.today().isoformat()
+        today = datetime.datetime.now(_EST).strftime("%Y-%m-%d")
         title = f"{actor_name} — PF {new_pf_score:.0f} ({today})"
 
         url = "https://api.notion.com/v1/pages"
@@ -532,7 +534,7 @@ def _write_scores_to_notion(actor_page_id: str, scores: dict) -> None:
                 "Authority Score": {"number": scores["authority_score"]},
                 "Reach Score": {"number": scores["reach_score"]},
                 "Score Reasoning": _rich_text(scores["reasoning"]),
-                "Last Scored": {"date": {"start": datetime.date.today().isoformat()}},
+                "Last Scored": {"date": {"start": datetime.datetime.now(_EST).strftime("%Y-%m-%d")}},
             },
         )
     except APIResponseError as exc:

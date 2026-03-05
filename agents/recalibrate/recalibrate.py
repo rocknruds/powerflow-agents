@@ -7,6 +7,8 @@ import json
 import re
 from typing import Any
 
+_EST = datetime.timezone(datetime.timedelta(hours=-5))
+
 import anthropic
 import requests
 from notion_client import Client
@@ -329,7 +331,7 @@ def _create_recalibration_snapshot(
     notes: str,
 ) -> None:
     """Create Score Snapshot row: Actor, Authority, Reach, PF, Snapshot Date, Source Recalibration Agent, Notes."""
-    today = datetime.date.today().isoformat()
+    today = datetime.datetime.now(_EST).strftime("%Y-%m-%d")
     title = f"{actor_name} — Recalibration PF {pf} ({today})"
     url = "https://api.notion.com/v1/pages"
     payload: dict[str, Any] = {
@@ -356,7 +358,7 @@ def _create_recalibration_snapshot(
 def _write_activity_log(num_adjusted: int, details: list[dict[str, Any]]) -> str | None:
     """Write one Activity Log entry for the recalibration run. Returns page_id or None on failure."""
     try:
-        now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+        now_utc = datetime.datetime.now(_EST).isoformat(timespec="seconds")
         action = f"Recalibration run — {num_adjusted} actors adjusted"
         details_json = json.dumps(details, indent=0)[:2000]
 

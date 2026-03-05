@@ -18,8 +18,11 @@ from typing import Any
 import anthropic
 import pdfplumber
 from dotenv import load_dotenv
+import datetime
 
 load_dotenv()
+
+_EST = datetime.timezone(datetime.timedelta(hours=-5))
 
 _ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 _SCREENER_MODEL = os.getenv("CLAUDE_SCREENER_MODEL", os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5"))
@@ -34,7 +37,11 @@ _NOTION_DATABASES = [
     "Scenarios & Stress Tests",
 ]
 
-_SYSTEM_PROMPT = """\
+today = datetime.datetime.now(_EST).strftime("%B %d, %Y")
+
+_SYSTEM_PROMPT = (
+    f"Today's date is {today}. Evaluate documents relative to this date.\n\n"
+    + """\
 You are a senior analyst for PowerFlow, a geopolitical intelligence system. \
 PowerFlow scores how power actually moves through the world. Every actor has a \
 PowerFlow Score (PF Score) — a composite measure of real internal control \
@@ -187,6 +194,7 @@ Geopolitical Units, Scenarios & Stress Tests
 
 CRITICAL: Return ONLY the JSON object. No markdown, no commentary. Start with { and end with }.\
 """
+)
 
 
 def extract_text_from_pdf(pdf_path: str | Path) -> str:

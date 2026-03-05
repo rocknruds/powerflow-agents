@@ -94,6 +94,7 @@ def main() -> None:
 
     source_data = data["source"]
     event_data = data["event"]
+    intel_feed_data = data.get("intel_feed", {})
 
     # Attach the URL to source data if we scraped it
     if url:
@@ -135,7 +136,7 @@ def main() -> None:
     screen_result_stub = {"score": 50, "reasoning": "Manually ingested via CLI."}
     try:
         intel_page_id, intel_page_url = notion_writer.write_intel_feed(
-            source_data, event_data, screen_result_stub
+            source_data, event_data, screen_result_stub, intel_feed_data
         )
     except RuntimeError as exc:
         console.print(f"\n[bold red]Notion write failed (Intel Feed):[/bold red] {exc}")
@@ -182,6 +183,16 @@ def main() -> None:
         except Exception as exc:
             console.print(f"[yellow]⚠ Scoring skipped:[/yellow] {exc}")
             score_results = []
+
+    # ── 8c. Back-fill Intel Feed link fields ──────────────────────────────────
+    console.print("\n[bold cyan]Updating Intel Feed links...[/bold cyan]")
+    actor_ids = [r[0] for r in actor_results]
+    notion_writer.patch_intel_feed(
+        intel_page_id=intel_page_id,
+        actor_page_ids=actor_ids,
+        source_page_id=source_page_id,
+        event_page_id=event_page_id,
+    )
 
     # ── 9. Write Activity Log ─────────────────────────────────────────────────
     console.print("\n[bold cyan]Writing Activity Log entry...[/bold cyan]")

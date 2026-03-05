@@ -12,6 +12,8 @@ import datetime
 from typing import Any
 
 import anthropic
+
+_EST = datetime.timezone(datetime.timedelta(hours=-5))
 import requests
 
 from config.settings import (
@@ -351,7 +353,7 @@ def log_brief_activity(status: str = "Completed", notes: str = "") -> None:
         return
 
     try:
-        now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+        now_utc = datetime.datetime.now(_EST).isoformat(timespec="seconds")
         properties: dict[str, Any] = {
             "Log Title": _title("PowerFlow Weekly Brief — Synthesis"),
             "Agent ID": _select("Agent-F: Synthesis"),

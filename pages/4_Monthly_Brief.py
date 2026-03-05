@@ -14,6 +14,8 @@ import datetime
 import sys
 from pathlib import Path
 
+_EST = datetime.timezone(datetime.timedelta(hours=-5))
+
 # Ensure the repo root is on the path so config.settings resolves correctly
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
@@ -215,7 +217,7 @@ if st.session_state.monthly_brief_text:
                 st.error(f"Brief generation failed: {exc}")
 
     if approve_btn:
-        start_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        start_dt = datetime.datetime.now(_EST) - datetime.timedelta(
             days=_LOOKBACK
         )
         date_range_start = start_dt.date().isoformat()

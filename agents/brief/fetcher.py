@@ -10,6 +10,8 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
+_EST = datetime.timezone(datetime.timedelta(hours=-5))
+
 import requests
 
 from config.settings import NOTION_API_KEY
@@ -116,14 +118,14 @@ def _relation_title(page_id: str) -> str:
 
 
 def _iso_cutoff(lookback_days: int) -> str:
-    """Return an ISO 8601 datetime string for N days ago (UTC)."""
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=lookback_days)
+    """Return an ISO 8601 datetime string for N days ago (EST)."""
+    cutoff = datetime.datetime.now(_EST) - datetime.timedelta(days=lookback_days)
     return cutoff.isoformat(timespec="seconds")
 
 
 def _date_range_label(lookback_days: int) -> str:
     """Return a human-readable date range label e.g. 'Feb 22 – Feb 28, 2026'."""
-    today = datetime.datetime.utcnow()
+    today = datetime.datetime.now(_EST)
     cutoff = today - datetime.timedelta(days=lookback_days)
     # Windows strftime does not support %-d; use %#d on Windows
     try:
@@ -135,7 +137,7 @@ def _date_range_label(lookback_days: int) -> str:
 def fetch_events(lookback_days: int = 7) -> list[dict[str, Any]]:
     """Fetch recent Events Timeline entries."""
     cutoff_date = (
-        datetime.datetime.now(datetime.timezone.utc)
+        datetime.datetime.now(_EST)
         - datetime.timedelta(days=lookback_days)
     ).date().isoformat()
     payload = {
@@ -195,7 +197,7 @@ def fetch_intel_feeds(lookback_days: int = 7) -> list[dict[str, Any]]:
 def fetch_score_snapshots(lookback_days: int = 7) -> list[dict[str, Any]]:
     """Fetch Score Snapshots where Score Delta != 0 and Snapshot Date is recent."""
     cutoff_date = (
-        datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=lookback_days)
+        datetime.datetime.now(_EST) - datetime.timedelta(days=lookback_days)
     ).date().isoformat()
 
     payload = {
