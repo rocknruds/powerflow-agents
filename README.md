@@ -1,59 +1,107 @@
 # PowerFlow Agents
 
-PowerFlow is a geopolitical intelligence system that measures and tracks the **PowerFlow Score (PF Score)** — a composite measure of real-world control and influence — for every actor in the system, regardless of their nominal or claimed authority.
+> *Intelligence systems reveal what declarations conceal.*
 
-This repo contains the **agents layer**: autonomous Python scripts that ingest, extract, and write structured intelligence data into the PowerFlow Notion workspace.
+PowerFlow is a geopolitical intelligence platform built on a single premise: the gap between claimed authority and exercised control is where the real story lives. This repo contains the **agent layer** — the Python pipeline that ingests raw intelligence, extracts structured data, scores actors, and writes everything into the PowerFlow knowledge graph.
 
 ---
 
-## PowerFlow Score Framework
+## What PowerFlow Actually Does
 
-Every actor in PowerFlow has a **PF Score** (0–100) — a composite measure of real-world power, not nominal or declared authority.
+Most geopolitical analysis describes what actors *say* they control. PowerFlow measures what they *actually* control — and tracks how that changes over time.
 
-| Component | What It Measures |
-|---|---|
-| **Authority Score** | Real internal control within claimed territory or domain |
-| **Reach Score** | External influence — ability to shape outcomes beyond own borders |
-| **PF Score** | Weighted composite (60% Authority, 40% Reach) |
+The core analytical unit is the **PF Score** (0–100): a weighted composite of two dimensions assessed for every actor in the system.
 
-Intelligence ingested through this agent feeds the analytical pipeline that keeps these scores updated.
+| Dimension | What It Measures | Weight |
+|---|---|---|
+| **Authority Score** | Real internal control within claimed territory or domain | 60% |
+| **Reach Score** | External influence — ability to shape outcomes beyond own borders | 40% |
+| **PF Score** | Composite measure of real-world power | — |
+
+The system tracks ~35+ actors across state, non-state, hybrid, and IGO categories. Scores are calibrated against a seven-tier anchor system — from the US and China (PF 80–90) down to collapsed states (PF 3–10) — with patron ceiling rules (proxies cannot outscore sponsors) and peer context injection to prevent calibration drift.
+
+### Why This Is Hard to Replicate
+
+Three things make PowerFlow's scores defensible rather than just decorative:
+
+1. **Structured ingestion with editorial control.** Every piece of source material passes through a relevance screener (0–100 score across five analytical dimensions) before extraction. Paywalled analytical sources are ingested manually — by design. Data quality is a feature.
+
+2. **Score coherence architecture.** Scoring uses anchor actors, peer comparison context, and a full-registry recalibration sweep with analyst approval gates. The system is designed so scores mean something *relative to each other*, not just in isolation.
+
+3. **Living knowledge graph.** The Notion backend isn't a database of static facts. It's a relational system where actors, events, conflicts, scenarios, and intelligence feeds connect to each other — and where scores update as ground truth shifts.
+
+---
+
+## System Architecture
+
+```
+Source Material (articles, reports, PDFs)
+        ↓
+   Relevance Screener (Claude, 0–100 score)
+        ↓
+   Extractor Agent (Claude Sonnet)
+        ↓ ↓ ↓ ↓
+Actors  Events  Intel Feeds  Sources   ← Notion databases
+   ↓
+Score Agent (Claude Sonnet + anchor context)
+        ↓
+Score Snapshots + Actor Registry update
+```
+
+**Streamlit interface** (`app.py`) provides the operational control layer: ingestion UI, scoring interface, brief generation, and full-registry rescore with approval gates.
+
+**Notion backend** serves as the analytical brain: a relational knowledge graph with interconnected databases for Actors, Events, Conflicts, Scenarios, Briefs, and more.
+
+**Next.js frontend** (`rocknruds/powerflow-app`) is the public-facing interface — currently in development, deprioritized until data quality is production-ready.
 
 ---
 
 ## Agents
 
-### Ingestion Agent (`agents/ingest`)
+### Ingestion Agent (`agents/ingest/`)
 
-Accepts a URL or pasted article text, extracts structured geopolitical event data using Claude, and writes two records to Notion:
+Accepts a URL or pasted article text. Runs it through:
 
-1. **Sources** — bibliographic metadata about the article
-2. **Events / Structural Changes Timeline** — the extracted geopolitical event
+1. **Relevance screener** — scores the piece 0–100 across five analytical dimensions. Low-relevance content is flagged before extraction.
+2. **Extractor** — Claude Sonnet extracts structured geopolitical data and writes simultaneously to four Notion databases: Sources, Events Timeline, Intelligence Feeds, and Actors Registry.
+
+Actor deduplication and institutional fragment filtering are built in — military commands, government departments, and sub-units are not created as standalone actors.
+
+### Score Agent (`score.py`)
+
+Scores any actor in the registry using:
+- Seven-tier anchor reference table for calibration
+- Peer context injection (similar actors compared at scoring time)
+- Patron ceiling rules (proxies capped relative to sponsors)
+- Claude Sonnet for reasoning quality
+
+Writes Authority Score, Reach Score, PF Score, and analytical rationale to the Actor page and creates a Score Snapshot for longitudinal tracking.
+
+### Rescore Registry (Streamlit Page 5)
+
+Full-registry sweep with analyst approval gates. Rescores all actors, displays results in a comparison table with reasoning, and requires manual approval before writing to Notion. Designed to catch and correct calibration drift before it compounds.
 
 ---
 
 ## Setup
 
-### 1. Python
+### Prerequisites
 
-Requires Python 3.11 or higher. Create and activate a virtual environment:
+- Python 3.11+
+- An Anthropic API key ([console.anthropic.com](https://console.anthropic.com))
+- A Notion integration token with access to the PowerFlow workspace
+
+### Install
 
 ```bash
+git clone https://github.com/rocknruds/powerflow-agents
+cd powerflow-agents
 python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-```
-
-### 2. Install dependencies
-
-```bash
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure environment variables
-
-Copy the example env file and fill in your keys:
+### Configure
 
 ```bash
 cp .env.example .env
@@ -62,87 +110,49 @@ cp .env.example .env
 Edit `.env`:
 
 ```
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-NOTION_API_KEY=your_notion_integration_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key
+NOTION_API_KEY=your_notion_integration_token
 ```
 
-#### Getting an Anthropic API key
-
-Sign up at [console.anthropic.com](https://console.anthropic.com) and create an API key under **API Keys**.
-
-#### Getting a Notion integration key
-
-1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations) and click **+ New integration**
-2. Give it a name (e.g. "PowerFlow Agents"), select your workspace, and click **Submit**
-3. Copy the **Internal Integration Token** — this is your `NOTION_API_KEY`
-4. In Notion, open each of the two databases below, click **⋯ → Connections → Add connection**, and select your integration
-
-| Database | Notion ID |
-|---|---|
-| Events / Structural Changes Timeline | `21452f2f-6f38-4a70-8f3b-dabbb7ee81f1` |
-| Sources | `c0e5c418-893f-4138-bc0d-7d046b02323d` |
-
-The integration must have **read and write** access to both databases.
-
----
-
-## Running the Ingestion Agent
-
-Run from the repo root:
+### Run
 
 ```bash
-# Ingest from a URL
+# Launch the full Streamlit interface
+streamlit run app.py
+
+# Or run the ingestion agent directly
 python -m agents.ingest.run --url "https://example.com/article"
-
-# Ingest from pasted text
-python -m agents.ingest.run --text "Paste your article text here..."
-
-# Interactive mode (prompts for URL or text)
-python -m agents.ingest.run
+python -m agents.ingest.run --text "Paste article text here..."
 ```
 
-The agent will:
-1. Fetch and clean the article text (if a URL is provided)
-2. Send the text to Claude for structured extraction
-3. Display the extracted Source and Event data for review
-4. Ask for confirmation before writing to Notion
-5. Print the Notion page URLs on success
-
 ---
 
-## What Gets Written to Notion
+## Using with Claude Code
 
-### Sources Database
+This repo is designed to be worked on with [Claude Code](https://claude.ai/code) — Anthropic's agentic coding tool that reads your codebase directly and makes coordinated changes across multiple files.
 
-| Field | Description |
-|---|---|
-| Title | Article/document title |
-| URL | Source URL (if ingested from a URL) |
-| Source Type | Academic, Government, News, Think tank, OSINT, Legal document, or Other |
-| Reliability | High, Medium, or Low |
-| Author / Organization | Byline or publishing organization |
-| Publication Date | ISO date |
-| Summary | 2–3 sentence summary |
+### Install Claude Code
 
-### Events / Structural Changes Timeline Database
+**macOS / Linux:**
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
 
-| Field | Description |
-|---|---|
-| Event Name | Concise, descriptive event label |
-| Date | ISO date of the event |
-| Event Type | Legal change, Military or coercive action, Sanctions, Institutional reform, etc. |
-| Description | 3–5 sentence analytical description focused on power implications |
-| PF Signal | Widens, Narrows, No clear effect, or Indirect — whether this event strengthens or weakens an actor's PF Score |
-| Key Sources | Linked to the Source record created in the same run |
+**Windows (PowerShell):**
+```powershell
+irm https://claude.ai/install.ps1 | iex
+```
 
----
+Requires a paid Claude account (Pro, Max, Teams, or Enterprise). No Node.js required for the native installer.
 
-## Error Handling
+### Run Claude Code in this repo
 
-- **Paywalled or JS-rendered pages**: scraping will fail with a clear message. Use `--text` and paste the article content manually.
-- **Malformed Claude responses**: the agent retries once with a stricter prompt before exiting.
-- **Invalid enum values**: defaulted to `Other` with a warning printed to the console.
-- **Notion API errors**: the full error response is printed — nothing fails silently.
+```bash
+cd powerflow-agents
+claude
+```
+
+Claude Code will read `CLAUDE.md` at startup for project context. A `CLAUDE.md` file is included in this repo — see it for the current system state, active work, and key architectural decisions.
 
 ---
 
@@ -152,14 +162,38 @@ The agent will:
 powerflow-agents/
 ├── agents/
 │   └── ingest/
-│       ├── __init__.py
-│       ├── scraper.py        # URL fetching and text extraction
-│       ├── extractor.py      # LLM extraction via Anthropic SDK
+│       ├── scraper.py        # URL fetching and text cleaning
+│       ├── extractor.py      # LLM extraction (Anthropic SDK)
 │       ├── notion_writer.py  # Notion API writes
 │       └── run.py            # CLI entrypoint
 ├── config/
-│   └── settings.py           # Env vars and constants
+│   └── settings.py           # Env vars, constants, model config
+├── pages/                    # Streamlit multi-page app
+├── score.py                  # Score agent
+├── app.py                    # Streamlit entrypoint
+├── CLAUDE.md                 # Claude Code context file
 ├── .env.example
-├── requirements.txt
-└── README.md
+└── requirements.txt
 ```
+
+---
+
+## Notion Database IDs
+
+| Database | ID |
+|---|---|
+| Actors Registry | `7aa6bbc818ad4a35a4059fbe2537d115` |
+| Events Timeline | `70e9768bfcec49a9aa8565d5aa1f1881` |
+| Intelligence Feeds | `3835cb822ae441a5a18cb4271d9fe955` |
+| Score Snapshots | `e96696510cac4435a52e89be9fb6a969` |
+| Scenarios | `430eb13962d44154b9761785faf01300` |
+| Briefs | `df4e70c01fa1460d8f9bb6c26f05dc1a` |
+
+---
+
+## Error Handling
+
+- **Paywalled or JS-rendered pages**: scraper will fail cleanly. Use `--text` and paste content manually — this is intentional, not a limitation.
+- **Low relevance scores**: the screener will flag and optionally abort before extraction.
+- **Notion API errors**: nothing fails silently. Full error responses are printed to console.
+- **Score calibration issues**: use the Rescore Registry page (Page 5) to run a full sweep with manual approval before writing.
