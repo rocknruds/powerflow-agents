@@ -33,7 +33,7 @@ _NOTION_DATABASES = [
     "Actors Registry",
     "PowerFlow Assessments",
     "Conflicts Registry",
-    "Geopolitical Units",
+    "Geopolitical Units",  # Geographic theaters, chokepoints, contested zones — NOT state actors (those go to Actors Registry)
     "Scenarios & Stress Tests",
 ]
 
@@ -190,7 +190,8 @@ Respond ONLY with a valid JSON object using this exact structure:
 
 Affected databases must be drawn only from this list:
 Events Timeline, Actors Registry, PowerFlow Assessments, Conflicts Registry, \
-Geopolitical Units, Scenarios & Stress Tests
+Geopolitical Units (geographic theaters / chokepoints / contested zones — not state actors), \
+Scenarios & Stress Tests
 
 CRITICAL: Return ONLY the JSON object. No markdown, no commentary. Start with { and end with }.\
 """
