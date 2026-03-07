@@ -166,7 +166,8 @@ def write_source(source: dict[str, Any]) -> tuple[str, str]:
         "Title": _title(source.get("title", "Untitled")),
         "Source Type": _select(source.get("source_type", "Other")),
         "Reliability": _select(source.get("reliability", "Medium")),
-        "Author / Organization": _rich_text(source.get("author_organization", "")),
+        "Publication / Organization": _rich_text(source.get("publication", "")),
+        "Author": _rich_text(source.get("author", "")),
         "Summary": _rich_text(source.get("summary", "")),
     }
 
@@ -275,7 +276,7 @@ def write_intel_feed(
         confidence_shift = "New Thread"
 
     feed = intel_feed or {}
-    normalized_author = _normalize_author(source.get("author_organization"))
+    normalized_author = _normalize_author(source.get("publication"))
     today = datetime.datetime.now(_EST).strftime("%Y-%m-%d")
 
     properties: dict[str, Any] = {
@@ -294,6 +295,8 @@ def write_intel_feed(
     if pub_date := source.get("publication_date"):
         properties["Publication Date"] = _date(pub_date)
 
+    if analyst_affiliation := feed.get("analyst_affiliation"):
+        properties["Analyst Affiliation"] = _rich_text(analyst_affiliation)
     if mechanism := feed.get("mechanism"):
         properties["Mechanism"] = _rich_text(mechanism)
     if trajectory := feed.get("trajectory"):

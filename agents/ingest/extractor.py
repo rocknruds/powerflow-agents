@@ -95,15 +95,18 @@ Extraction rules:
 - If the date is unclear, use the article publication date
 - Reliability: High = established outlet or primary source,
   Medium = secondary reporting, Low = unverified or opinion
-- Source Type: classify based on the publishing organization
+- Source Type: classify based on the publishing organization.
+  Use "Analytical / Longform" for in-depth analytical essays, longform journalism, or extended commentary pieces that are neither strictly academic nor standard news reporting.
+- Author vs. Publication: these are always separate fields. "publication" must contain only the outlet or institution name. "author" must contain only the individual person's byline name. Never combine them into either field.
 
 Return this exact JSON structure:
 {
   "source": {
     "title": "string",
-    "author_organization": "string — the publishing organization (e.g. 'New York Times', 'WSJ', 'CSIS'). Return the publication name, NOT the individual journalist's byline.",
+    "publication": "string — the outlet or institution name ONLY (e.g. 'New York Times', 'WSJ', 'CSIS', 'RAND Corporation'). Never a person's name. Never combine author and publication.",
+    "author": "string — the individual author's name (e.g. 'Jane Smith'). First and last name only. Leave blank if no individual byline is present. Never combine with the publication name.",
     "publication_date": "YYYY-MM-DD",
-    "source_type": "Academic | Government | News | Think tank | OSINT | Legal document | Other",
+    "source_type": "Academic | Government | News | Think tank | OSINT | Legal document | Analytical / Longform | Other",
     "reliability": "High | Medium | Low",
     "summary": "string (2-3 sentences — capture the author's core analytical argument, not just the topic)"
   },
@@ -136,7 +139,8 @@ Return this exact JSON structure:
     "so_what_summary": "string (2-3 sentences — analytical summary of what this document means for PowerFlow's world model: what changed, for which actors, and what it implies. This is NOT a description of the document. Write it as a finished analytical statement, e.g. 'Russia's suspension of New START removes the last bilateral arms-control mechanism, freeing Moscow to expand its tactical nuclear posture without transparency obligations. This shifts the strategic calculus for NATO's eastern flank states, accelerating their push for Article 5 tripwire deployments. The gap between Russia's claimed compliance posture and its actual force posture is now unverifiable, widening PF scores across the Russia-NATO axis.')",
     "mechanism": "string (1-2 sentences — same causal argument as event.mechanism but written for the Intel Feed analytical layer)",
     "trajectory": "string (1-2 sentences — same durability claim as event.trajectory but from the Intel Feed perspective)",
-    "cascade_effects": "string (2-4 sentences — the multi-hop downstream chain this event sets in motion across actors and regions. Trace the second and third-order effects. Example: 'IRGC collapse removes the coordination backbone for Houthi operations, likely degrading Red Sea interdiction tempo within 60-90 days. Normalized shipping lanes reduce Gulf insurance premiums, easing Turkey's export corridor economics and reducing pressure on Erdogan to seek alternative trade routes. Qatar's regional mediation leverage increases as Iran's axis fractures and Gulf states seek a new broker.')"
+    "cascade_effects": "string (2-4 sentences — the multi-hop downstream chain this event sets in motion across actors and regions. Trace the second and third-order effects. Example: 'IRGC collapse removes the coordination backbone for Houthi operations, likely degrading Red Sea interdiction tempo within 60-90 days. Normalized shipping lanes reduce Gulf insurance premiums, easing Turkey's export corridor economics and reducing pressure on Erdogan to seek alternative trade routes. Qatar's regional mediation leverage increases as Iran's axis fractures and Gulf states seek a new broker.')",
+    "analyst_affiliation": "string — if the author is affiliated with a think tank, research institute, or academic institution (e.g. 'Carnegie Endowment', 'RAND Corporation', 'Brookings Institution'), populate with the institution name. Leave blank for journalists at news outlets."
   }
 }
 
