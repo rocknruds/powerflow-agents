@@ -33,6 +33,7 @@ CLAUDE_SCORE_MAX_TOKENS = 768  # scores are small JSON objects
 # Valid enum values for validation
 VALID_SOURCE_TYPES = {
     "Academic",
+    "Analytical / Longform",
     "Government",
     "News",
     "Think tank",

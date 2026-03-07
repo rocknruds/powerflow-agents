@@ -154,3 +154,5 @@ NOTION_SCORE_SNAPSHOTS_DB_ID= # e96696510cac4435a52e89be9fb6a969
 CLAUDE_MODEL=            # claude-haiku-4-5-20251001 (default for extraction)
 CLAUDE_SCORE_MODEL=      # claude-sonnet-4-6 (scoring)
 ```
+## Running the app
+Always use `streamlit run app.py` from the repo root. Never run `agents/brief/app.py` directly.
